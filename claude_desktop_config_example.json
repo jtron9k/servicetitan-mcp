@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "servicetitan": {
+      "command": "python",
+      "args": [
+        "-m",
+        "servicetitan_mcp.server"
+      ],
+      "env": {
+        "ST_APP_KEY": "your-app-key",
+        "ST_CLIENT_ID": "cid.your-client-id",
+        "ST_CLIENT_SECRET": "cs1.your-client-secret",
+        "ST_TENANT_ID": "your-tenant-id"
+      }
+    }
+  }
+}
