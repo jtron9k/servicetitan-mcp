@@ -2,7 +2,5 @@
 builder = "dockerfile"
 
 [deploy]
-healthcheckPath = "/sse"
-healthcheckTimeout = 10
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
