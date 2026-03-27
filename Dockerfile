@@ -10,4 +10,5 @@ RUN pip install --no-cache-dir -e .
 
 EXPOSE 8000
 
-CMD ["python", "-m", "servicetitan_mcp.server"]
+ENV MCP_TRANSPORT=sse
+CMD python -c "import os; from servicetitan_mcp.server import mcp; t=os.environ.get('MCP_TRANSPORT','stdio'); mcp.run(transport=t, host='0.0.0.0', port=int(os.environ.get('PORT','8000'))) if t=='sse' else mcp.run()"
