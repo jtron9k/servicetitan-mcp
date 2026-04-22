@@ -48,7 +48,7 @@ For multiple tenants, add separate server entries (see `claude_desktop_config_ex
 4. Accept Terms and Conditions
 5. Copy your **Client ID** and generate a **Client Secret**
 6. Your **Tenant ID** is shown in the top-right corner of any ServiceTitan page
-7. The **App Key** is: `REDACTED`
+7. Your **App Key** is provided by ServiceTitan when your integration app is registered — obtain it directly from your own ServiceTitan account/integration setup
 
 ## Available Tools (60)
 
