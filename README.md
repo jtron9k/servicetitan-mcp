@@ -4,6 +4,10 @@ Connect Claude to ServiceTitan via API. 60 tools covering CRM, Jobs, Accounting,
 
 Built for any ServiceTitan customer — each tenant manages its own credentials independently.
 
+## Credits
+
+This project is a fork of [glassdoc/servicetitan-mcp](https://github.com/glassdoc/servicetitan-mcp), created by the [glassdoc](https://github.com/glassdoc) team. All credit for the original design and the bulk of the implementation goes to them. This fork adds fixes for production auth, improved error surfacing, and a corrected `run_report` endpoint.
+
 ## Quick Start
 
 ```bash
