@@ -8,6 +8,16 @@ from .auth import token_manager
 API_BASE = "https://api.servicetitan.io"
 
 
+def _raise_with_body(resp: httpx.Response) -> None:
+    if resp.is_error:
+        body = resp.text[:2000]
+        raise httpx.HTTPStatusError(
+            f"{resp.status_code} {resp.reason_phrase} for {resp.request.url}\nResponse body: {body}",
+            request=resp.request,
+            response=resp,
+        )
+
+
 class ServiceTitanClient:
     """Wraps authenticated requests to the ServiceTitan API."""
 
@@ -44,7 +54,7 @@ class ServiceTitanClient:
         headers = await self._headers()
         async with httpx.AsyncClient(timeout=timeout) as http:
             resp = await http.get(url, headers=headers, params=params)
-            resp.raise_for_status()
+            _raise_with_body(resp)
             return resp.json()
 
     async def post(
@@ -57,7 +67,7 @@ class ServiceTitanClient:
         headers = await self._headers()
         async with httpx.AsyncClient(timeout=timeout) as http:
             resp = await http.post(url, headers=headers, json=json_body)
-            resp.raise_for_status()
+            _raise_with_body(resp)
             return resp.json()
 
     async def patch(
@@ -70,7 +80,7 @@ class ServiceTitanClient:
         headers = await self._headers()
         async with httpx.AsyncClient(timeout=timeout) as http:
             resp = await http.patch(url, headers=headers, json=json_body)
-            resp.raise_for_status()
+            _raise_with_body(resp)
             return resp.json()
 
     async def put(
@@ -83,7 +93,7 @@ class ServiceTitanClient:
         headers = await self._headers()
         async with httpx.AsyncClient(timeout=timeout) as http:
             resp = await http.put(url, headers=headers, json=json_body)
-            resp.raise_for_status()
+            _raise_with_body(resp)
             return resp.json()
 
     # -- Convenience helpers --

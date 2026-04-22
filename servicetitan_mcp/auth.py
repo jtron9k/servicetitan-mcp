@@ -3,7 +3,7 @@
 import time
 import httpx
 
-TOKEN_URL = "https://auth-integration.servicetitan.io/connect/token"
+TOKEN_URL = "https://auth.servicetitan.io/connect/token"
 TOKEN_LIFETIME = 900  # 15 minutes
 TOKEN_BUFFER = 60     # refresh 1 minute early
 
@@ -32,6 +32,7 @@ class TokenManager:
                     "grant_type": "client_credentials",
                     "client_id": client_id,
                     "client_secret": client_secret,
+                    "tenant": tenant_id,
                 },
             )
             resp.raise_for_status()

@@ -675,24 +675,35 @@ async def list_reports_in_category(category_id: int) -> str:
 @mcp.tool()
 async def run_report(
     report_id: int,
+    category: str,
     parameters: str | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> str:
     """Run a ServiceTitan report by ID.
 
-    parameters: JSON string of report parameters, e.g. '{"From":"2024-01-01","To":"2024-12-31"}'
+    category: report category slug (e.g. 'marketing', 'operations', 'accounting').
+        Use list_report_categories to discover.
+    parameters: JSON string mapping parameter names to values, e.g.
+        '{"From":"2024-01-01","To":"2024-12-31","BusinessUnitIds":[1,2,3]}'
     """
     client = _get_client()
-    params: dict = {"page": page, "pageSize": page_size}
+
+    body: dict = {"parameters": []}
     if parameters:
         try:
-            report_params = json.loads(parameters)
-            params["parameters"] = json.dumps(report_params)
+            param_map = json.loads(parameters)
         except json.JSONDecodeError:
             return "Error: 'parameters' must be a valid JSON string."
-    path = f"/reporting/v2/tenant/{client.tenant_id}/dynamic-value-sets/{report_id}"
-    data = await client.get(path, params=params)
+        body["parameters"] = [
+            {"name": name, "value": value} for name, value in param_map.items()
+        ]
+
+    path = (
+        f"/reporting/v2/tenant/{client.tenant_id}/report-category/{category}"
+        f"/reports/{report_id}/data?page={page}&pageSize={page_size}"
+    )
+    data = await client.post(path, json_body=body)
     return _fmt(data)
 
 
