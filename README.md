@@ -2,11 +2,11 @@
 
 Connect Claude to ServiceTitan via API. 60 tools covering CRM, Jobs, Accounting, Estimates, Dispatch, Pricebook, Inventory, Memberships, Payroll, Marketing, Reporting, Timesheets, Telecom, and more.
 
-Built for any ServiceTitan customer — each tenant manages its own credentials independently.
+Multi-tenant: one server instance can query any number of ServiceTitan tenants on a per-call basis, including cross-tenant aggregation.
 
 ## Credits
 
-This project is a fork of [glassdoc/servicetitan-mcp](https://github.com/glassdoc/servicetitan-mcp), created by the [glassdoc](https://github.com/glassdoc) team. All credit for the original design and the bulk of the implementation goes to them. This fork adds fixes for production auth, improved error surfacing, and a corrected `run_report` endpoint.
+This project is a fork of [glassdoc/servicetitan-mcp](https://github.com/glassdoc/servicetitan-mcp), created by the [glassdoc](https://github.com/glassdoc) team. All credit for the original design and the bulk of the implementation goes to them. This fork adds fixes for production auth, improved error surfacing, a corrected `run_report` endpoint, and multi-tenant support.
 
 ## Quick Start
 
@@ -28,29 +28,98 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
       "command": "python",
       "args": ["-m", "servicetitan_mcp.server"],
       "env": {
-        "ST_APP_KEY": "your-app-key",
-        "ST_CLIENT_ID": "cid.your-client-id",
-        "ST_CLIENT_SECRET": "cs1.your-client-secret",
-        "ST_TENANT_ID": "your-tenant-id"
+        "ST_TENANTS": "acme,other",
+
+        "ST_TENANT_ACME_ID": "your-tenant-id",
+        "ST_TENANT_ACME_CLIENT_ID": "cid.your-client-id",
+        "ST_TENANT_ACME_CLIENT_SECRET": "cs1.your-client-secret",
+        "ST_TENANT_ACME_APP_KEY": "your-app-key",
+
+        "ST_TENANT_OTHER_ID": "your-tenant-id",
+        "ST_TENANT_OTHER_CLIENT_ID": "cid.your-client-id",
+        "ST_TENANT_OTHER_CLIENT_SECRET": "cs1.your-client-secret",
+        "ST_TENANT_OTHER_APP_KEY": "your-app-key"
       }
     }
   }
 }
 ```
 
-For multiple tenants, add separate server entries (see `claude_desktop_config_example.json`).
+### Env var schema
+
+- `ST_TENANTS` — comma-separated list of tenant names. Names must be lowercase and match `^[a-z][a-z0-9_-]*$`. These are the names the LLM uses in tool calls, so pick slugs that are recognizable when phrased naturally ("st_louis" rather than "t1").
+- For each name in `ST_TENANTS`, set four namespaced vars where `<NAME>` is the uppercase form of the slug:
+  - `ST_TENANT_<NAME>_ID` — numeric ServiceTitan tenant id (used in API URLs).
+  - `ST_TENANT_<NAME>_CLIENT_ID` — OAuth2 Client ID.
+  - `ST_TENANT_<NAME>_CLIENT_SECRET` — OAuth2 Client Secret.
+  - `ST_TENANT_<NAME>_APP_KEY` — `ST-App-Key` header value from the Developer Portal.
+
+If one ServiceTitan app is authorized against multiple tenants, the `CLIENT_ID` / `CLIENT_SECRET` / `APP_KEY` will be identical across tenants and only `ID` differs. If each tenant has its own app registration, all four vary. The schema supports both.
+
+For a complete ready-to-edit example, see [`claude_desktop_config_example.json`](claude_desktop_config_example.json).
 
 ## Getting Your Credentials
 
-1. Go to **Settings > Integrations > API Application Access** in your ServiceTitan tenant
-2. Find the **Claude MCP Integration** app and click **Connect**
-3. Fill in the restriction fields (booking_provider, gps_provider, report_category)
-4. Accept Terms and Conditions
-5. Copy your **Client ID** and generate a **Client Secret**
-6. Your **Tenant ID** is shown in the top-right corner of any ServiceTitan page
-7. Your **App Key** is provided by ServiceTitan when your integration app is registered — obtain it directly from your own ServiceTitan account/integration setup
+For each tenant:
 
-## Available Tools (60)
+1. Go to **Settings > Integrations > API Application Access** in that ServiceTitan tenant.
+2. Find the **Claude MCP Integration** app and click **Connect**.
+3. Fill in the restriction fields (booking_provider, gps_provider, report_category).
+4. Accept Terms and Conditions.
+5. Copy your **Client ID** and generate a **Client Secret**.
+6. Your **Tenant ID** is shown in the top-right corner of any ServiceTitan page.
+7. Your **App Key** is provided by ServiceTitan when your integration app is registered — obtain it directly from your own ServiceTitan account/integration setup.
+
+## Multi-Tenant Usage
+
+### The `tenant` argument
+
+Every tool takes a required `tenant: str` as its first argument naming one of the configured tenants. There is no default — calling any tool without `tenant` raises a schema error from FastMCP. This is intentional: a silent wrong-tenant answer ("most recent job" on the wrong business) is worse than any UX inconvenience.
+
+### Discovery: `list_tenants`
+
+A new no-arg tool, `list_tenants`, returns the configured tenant names. The LLM typically calls this first when the user names a business by name, so it can map phrasing → tenant slug correctly.
+
+### Cross-tenant queries
+
+The server itself is always single-tenant per call. Cross-tenant aggregation is LLM-orchestrated: when the user asks something like *"total jobs booked across all businesses last month"*, Claude fans out — one tool call per tenant — and aggregates the results in its reply. No server-side join, no cross-tenant auth, no shared rate-limiter contention.
+
+Practically, this means:
+
+- **Per-tenant rate limiting is independent.** The 30 rps main / 3 rpm reporting limits apply *per tenant*, so four tenants have 4× the headroom of a single tenant in burst scenarios.
+- **OAuth tokens cache per tenant.** The `TokenManager` is keyed on `tenant_id`, so sequential cross-tenant use does not invalidate any one tenant's token.
+- **Concurrent cross-tenant fan-out works.** The process-wide concurrency semaphore (`ST_MAX_CONCURRENCY`, default 10) caps total parallelism, not per-tenant.
+
+Example flows:
+
+- *"Most recent job in St. Louis"* → single `list_jobs(tenant="st_louis", ...)` call.
+- *"Show me revenue by business last month"* → Claude calls `list_invoices(tenant="...", created_on_or_after=...)` once per configured tenant and sums.
+
+### Unknown tenant errors
+
+Calling a tool with a tenant slug that isn't configured returns a structured error listing the valid names:
+
+```
+Unknown tenant 'foo'. Configured: acme, other. Call list_tenants for the authoritative list.
+```
+
+## Migrating from single-tenant
+
+If you're upgrading from a pre-multi-tenant version of this server, your previous env vars (`ST_APP_KEY`, `ST_CLIENT_ID`, `ST_CLIENT_SECRET`, `ST_TENANT_ID`) are no longer read. On startup with the old config you'll see:
+
+```
+RuntimeError: ST_TENANTS is not set, but legacy single-tenant vars are
+present: ST_TENANT_ID, ST_APP_KEY, ST_CLIENT_ID, ST_CLIENT_SECRET. This
+server is now multi-tenant. Set ST_TENANTS=<comma-separated names> and
+namespaced vars ST_TENANT_<NAME>_ID / _CLIENT_ID / _CLIENT_SECRET /
+_APP_KEY per tenant. See README for the full migration.
+```
+
+Migration takes ~5 minutes per tenant: rename the four old vars with an `ST_TENANT_<NAME>_` prefix, and add `ST_TENANTS=<name>` naming that tenant. To add additional tenants, repeat the four-var block with new names and extend `ST_TENANTS`.
+
+## Available Tools (60 + `list_tenants`)
+
+Every tool below takes `tenant: str` as its first required argument. See "Multi-Tenant Usage" above.
 
 ### CRM
 - `list_customers` — Search and list customers
@@ -107,6 +176,7 @@ For multiple tenants, add separate server entries (see `claude_desktop_config_ex
 - `list_recurring_services` — Recurring services
 
 ### Settings
+- `list_tenants` — Configured tenant names (no `tenant` arg)
 - `list_employees` — Employees
 - `get_employee` — Employee details
 - `list_technicians` — Technicians
@@ -146,66 +216,72 @@ For multiple tenants, add separate server entries (see `claude_desktop_config_ex
 
 ## Authentication
 
-Uses OAuth 2.0 Client Credentials flow. Tokens auto-refresh every 15 minutes. No user interaction required.
+Uses OAuth 2.0 Client Credentials flow. Tokens auto-refresh every 15 minutes. Tokens cache per `tenant_id`, so cross-tenant use does not invalidate each other. No user interaction required.
 
 ## Common Workflows
 
-Recipes for frequent questions, with the tool sequence Claude should pick.
+Recipes for frequent questions, with the tool sequence Claude should pick. Every tool takes `tenant` as the first argument — omitted below for brevity, but always required.
 
 ### Find a customer by name (then drill down)
-1. `list_customers(name="Smith")` → returns candidates with IDs, contact blocks, primary location.
-2. Optional `get_customer(customer_id=...)` only if you need custom fields not in the list response.
+1. `list_customers(tenant=..., name="Smith")` → returns candidates with IDs, contact blocks, primary location.
+2. Optional `get_customer(tenant=..., customer_id=...)` only if you need custom fields not in the list response.
 
 ### Find a customer by phone or email
 The `list_customers` endpoint has no phone/email filter. Two options:
-- `servicetitan_api_call("GET", "/crm/v2/tenant/{tenant_id}/customers", query_params='{"phone":"555-0100"}')` — works if ST exposes `phone` on this tenant.
+- `servicetitan_api_call(tenant=..., method="GET", path="/crm/v2/tenant/{tenant_id}/customers", query_params='{"phone":"555-0100"}')` — works if ST exposes `phone` on this tenant.
 - Fallback: `list_contacts` with date range and match locally.
 
 ### Full job timeline for a customer
-1. `list_customers(name=...)` → customerId
-2. `list_jobs(customer_id=...)` → jobIds (status, dates)
-3. For a specific job: `list_appointments(starts_on_or_after=...)` filtered to that job, or `get_job(job_id=...)` for full detail
-4. `list_invoices(job_id=...)` for billing side
-5. `list_estimates(job_id=...)` if a quote exists
+1. `list_customers(tenant=..., name=...)` → customerId
+2. `list_jobs(tenant=..., customer_id=...)` → jobIds (status, dates)
+3. For a specific job: `list_appointments(tenant=..., starts_on_or_after=...)` filtered to that job, or `get_job(tenant=..., job_id=...)` for full detail
+4. `list_invoices(tenant=..., job_id=...)` for billing side
+5. `list_estimates(tenant=..., job_id=...)` if a quote exists
 
 ### Revenue for a date range
-- Simple total: `list_invoices(created_on_or_after="2024-01-01")` — sum client-side.
+- Simple total: `list_invoices(tenant=..., created_on_or_after="2024-01-01")` — sum client-side.
 - Broken down by Business Unit or campaign: use `run_report` (reporting quota applies, slower). Step through `list_report_categories` → `list_reports_in_category` to find the right report and its parameter schema first.
 
+### Cross-tenant aggregation
+- *"Revenue across all businesses last month"* → call `list_invoices` once per tenant from `list_tenants`, sum client-side.
+- *"Which business has the most open estimates right now?"* → call `list_estimates(status="Open")` once per tenant, compare counts.
+
+Claude orchestrates the fan-out; there's no server-side aggregation tool and no need to call `list_tenants` in the query path if the tenant set is already known.
+
 ### Technician's schedule today
-1. `list_appointment_assignments(starts_on_or_after="2024-04-22", starts_on_or_before="2024-04-23")`
-2. Cross-reference with `list_technicians` (cache this — small and static) to map IDs → names.
+1. `list_appointment_assignments(tenant=..., starts_on_or_after="2024-04-22", starts_on_or_before="2024-04-23")`
+2. Cross-reference with `list_technicians(tenant=...)` (cache this — small and static) to map IDs → names.
 
 ### Open estimates by business unit
-1. `list_business_units()` — cache the BU ID → name map.
-2. `list_estimates(status="Open")` — note `businessUnitId` per estimate, group client-side.
+1. `list_business_units(tenant=...)` — cache the BU ID → name map.
+2. `list_estimates(tenant=..., status="Open")` — note `businessUnitId` per estimate, group client-side.
 
 ### Membership renewals due this month
-1. `list_memberships(status="Active")` — look at `nextScheduledDate` / `to` expiry.
-2. For the tune-up visits themselves: `list_recurring_services()`.
+1. `list_memberships(tenant=..., status="Active")` — look at `nextScheduledDate` / `to` expiry.
+2. For the tune-up visits themselves: `list_recurring_services(tenant=...)`.
 
 ### Marketing channel ROI
-1. `list_campaigns()` — cache campaign ID → name.
-2. `list_campaign_costs(campaign_id=...)` for spend.
-3. `list_invoices(created_on_or_after=...)` then group by each job's campaignId for revenue attribution.
+1. `list_campaigns(tenant=...)` — cache campaign ID → name.
+2. `list_campaign_costs(tenant=..., campaign_id=...)` for spend.
+3. `list_invoices(tenant=..., created_on_or_after=...)` then group by each job's campaignId for revenue attribution.
 
 ## Rate limits and error handling
 
-ServiceTitan enforces:
-- **Main API:** 60 requests/second per app per tenant.
-- **Reporting API:** 5 requests/minute per report per tenant.
+ServiceTitan enforces **per app per tenant**:
+- **Main API:** 60 requests/second.
+- **Reporting API:** 5 requests/minute per report.
 
 This server layers the following in front of those limits:
 
-- **Two token buckets** keyed by path. Main API paths use one, `/reporting/*` uses a separate, stricter one. Defaults are `30 rps` and `3 rpm` (half the hard caps) to leave headroom for bursts. Override via env vars:
+- **Per-tenant token buckets.** Each tenant gets its own pair (main + reporting) — they don't share quota. Four tenants have 4× the aggregate burst headroom of a single tenant. Defaults: `30 rps` main, `3 rpm` reporting (half the hard caps, leaving room for bursts). Override via:
   - `ST_RATE_LIMIT_RPS` (default `30`)
   - `ST_REPORTING_RPM` (default `3`)
-  - `ST_MAX_CONCURRENCY` (default `10`) — cap on in-flight requests
+  - `ST_MAX_CONCURRENCY` (default `10`) — process-wide cap on in-flight requests across all tenants
 - **Automatic retry** on `429`, `502`, `503`, `504`:
   - Honors `Retry-After` header if the server sends one.
   - Otherwise exponential backoff: 1s → 2s → 4s, max 3 retries.
   - On final failure, the HTTP error (including response body) is raised so Claude sees what went wrong.
-- **Shared connection pool**: one `httpx.AsyncClient` is reused across tool calls to avoid per-request TCP handshakes.
+- **Shared connection pool**: one `httpx.AsyncClient` is reused across all tool calls and all tenants to avoid per-request TCP handshakes. Pooling is per-host; ST is one host, so splitting per tenant would gain nothing.
 
 Retries log to stderr at the `[servicetitan-mcp]` prefix — tail the Claude Desktop logs to observe backoff behavior when investigating slowness.
 

@@ -28,6 +28,8 @@ def _stub_token(monkeypatch):
 def _build_client(handler, **kwargs) -> ServiceTitanClient:
     """Build a ServiceTitanClient with a MockTransport wired to `handler`."""
     transport = httpx.MockTransport(handler)
+    kwargs.setdefault("main_limiter", TokenBucket(rate=1000, capacity=1000))
+    kwargs.setdefault("reporting_limiter", TokenBucket(rate=1000, capacity=1000))
     return ServiceTitanClient(
         app_key="k",
         client_id="ci",

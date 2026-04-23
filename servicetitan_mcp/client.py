@@ -133,11 +133,34 @@ async def aclose() -> None:
     _shared_client = None
 
 
-# Process-wide shared limiters (shared across all ServiceTitanClient instances
-# for the same tenant so concurrent tool calls actually honor the quota).
-_main_limiter = TokenBucket(rate=MAIN_RPS, capacity=MAIN_RPS)
-_reporting_limiter = TokenBucket(rate=REPORTING_RPM / 60.0, capacity=max(1.0, REPORTING_RPM))
+# Per-tenant rate limiters. ServiceTitan's quotas are per-app-per-tenant, so
+# buckets must not be shared across tenants (that would under-utilize by N×).
+# Concurrency semaphore stays process-wide — it only guards local httpx fan-out,
+# not ST quota.
+_main_limiters: dict[str, TokenBucket] = {}
+_reporting_limiters: dict[str, TokenBucket] = {}
 _concurrency_sem = asyncio.Semaphore(DEFAULT_CONCURRENCY)
+
+
+def main_limiter_for(tenant_name: str) -> TokenBucket:
+    """Get or create the main-API rate limiter for `tenant_name`."""
+    bucket = _main_limiters.get(tenant_name)
+    if bucket is None:
+        bucket = TokenBucket(rate=MAIN_RPS, capacity=MAIN_RPS)
+        _main_limiters[tenant_name] = bucket
+    return bucket
+
+
+def reporting_limiter_for(tenant_name: str) -> TokenBucket:
+    """Get or create the reporting-API rate limiter for `tenant_name`."""
+    bucket = _reporting_limiters.get(tenant_name)
+    if bucket is None:
+        bucket = TokenBucket(
+            rate=REPORTING_RPM / 60.0,
+            capacity=max(1.0, REPORTING_RPM),
+        )
+        _reporting_limiters[tenant_name] = bucket
+    return bucket
 
 
 class ServiceTitanClient:
@@ -152,8 +175,8 @@ class ServiceTitanClient:
         *,
         transport: httpx.AsyncBaseTransport | None = None,
         retry: RetryConfig | None = None,
-        main_limiter: TokenBucket | None = None,
-        reporting_limiter: TokenBucket | None = None,
+        main_limiter: TokenBucket,
+        reporting_limiter: TokenBucket,
         concurrency: int | None = None,
     ):
         self.app_key = app_key
@@ -161,8 +184,8 @@ class ServiceTitanClient:
         self.client_secret = client_secret
         self.tenant_id = tenant_id
         self.retry = retry or RetryConfig()
-        self._main_limiter = main_limiter or _main_limiter
-        self._reporting_limiter = reporting_limiter or _reporting_limiter
+        self._main_limiter = main_limiter
+        self._reporting_limiter = reporting_limiter
         self._sem = (
             asyncio.Semaphore(concurrency) if concurrency is not None else _concurrency_sem
         )

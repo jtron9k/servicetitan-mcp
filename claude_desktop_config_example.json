@@ -7,10 +7,17 @@
         "servicetitan_mcp.server"
       ],
       "env": {
-        "ST_APP_KEY": "your-app-key",
-        "ST_CLIENT_ID": "cid.your-client-id",
-        "ST_CLIENT_SECRET": "cs1.your-client-secret",
-        "ST_TENANT_ID": "your-tenant-id"
+        "ST_TENANTS": "acme,other",
+
+        "ST_TENANT_ACME_ID": "your-tenant-id",
+        "ST_TENANT_ACME_CLIENT_ID": "cid.your-client-id",
+        "ST_TENANT_ACME_CLIENT_SECRET": "cs1.your-client-secret",
+        "ST_TENANT_ACME_APP_KEY": "your-app-key",
+
+        "ST_TENANT_OTHER_ID": "your-tenant-id",
+        "ST_TENANT_OTHER_CLIENT_ID": "cid.your-client-id",
+        "ST_TENANT_OTHER_CLIENT_SECRET": "cs1.your-client-secret",
+        "ST_TENANT_OTHER_APP_KEY": "your-app-key"
       }
     }
   }

@@ -41,7 +41,7 @@ def _wire_client(monkeypatch, handler) -> ServiceTitanClient:
         main_limiter=TokenBucket(rate=1000, capacity=1000),
         reporting_limiter=TokenBucket(rate=1000, capacity=1000),
     )
-    monkeypatch.setattr(server, "_get_client", lambda: c)
+    monkeypatch.setattr(server, "_get_client", lambda _tenant: c)
     return c
 
 
@@ -80,7 +80,7 @@ async def test_list_tool_with_page_size_100_returns_all_71_records(monkeypatch):
         )
 
     _wire_client(monkeypatch, handler)
-    output = await server.list_jobs(page=1, page_size=100)
+    output = await server.list_jobs(tenant="test", page=1, page_size=100)
 
     # Strip the footer to parse the JSON payload
     body, _, _ = output.partition("\n\n(Showing")
@@ -115,7 +115,7 @@ async def test_list_tool_hasmore_true_when_full_page_and_no_totalcount(monkeypat
         )
 
     _wire_client(monkeypatch, handler)
-    output = await server.list_jobs(page=1, page_size=50)
+    output = await server.list_jobs(tenant="test", page=1, page_size=50)
 
     footer = _parse_footer(output)
     assert footer["shown"] == 50
@@ -145,7 +145,7 @@ async def test_list_tool_hasmore_false_when_partial_page(monkeypatch):
         )
 
     _wire_client(monkeypatch, handler)
-    output = await server.list_jobs(page=3, page_size=50)
+    output = await server.list_jobs(tenant="test", page=3, page_size=50)
 
     footer = _parse_footer(output)
     assert footer["shown"] == 21
