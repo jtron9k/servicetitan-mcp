@@ -7,3 +7,4 @@ build/
 test_auth.py
 st_credentials.txt
 next_steps.md
+.worktrees/
