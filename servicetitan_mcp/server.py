@@ -30,10 +30,14 @@ HOW TO USE THIS SERVER EFFICIENTLY:
    server-side filters (name, status, customer_id, date ranges). Use them.
    Listing every customer then filtering locally wastes API quota and tokens.
 
-2. PAGINATION. `list_*` tools default to page_size=50. If you need more, raise
-   `page_size` up to 200 BEFORE calling the same tool multiple times with
-   different `page` values. The `(Showing N of T results — page P, hasMore=…)`
-   footer tells you whether to fetch more pages.
+2. PAGINATION. `list_*` tools default to page_size=50. `page_size` is passed
+   directly to ServiceTitan; most endpoints accept hundreds to a few thousand
+   per page (ST enforces its own per-endpoint cap). Prefer a large `page_size`
+   over many paged calls. ALWAYS trust the `hasMore=…` footer — NOT the number
+   of items shown — to decide whether more pages exist. `totalCount` may be
+   reported as `unknown` for endpoints that don't return it; in that case
+   `hasMore` is inferred from whether a full page came back, so keep paging
+   until `hasMore=False`.
 
 3. RATE LIMITS ARE HANDLED FOR YOU. The client retries 429s with backoff, so
    transient throttling is invisible. But you can still exhaust quotas:
@@ -80,26 +84,33 @@ def _get_client() -> ServiceTitanClient:
     return ServiceTitanClient(app_key, client_id, client_secret, tenant_id)
 
 
-def _fmt(data: dict | list, max_items: int = 25) -> str:
-    """Pretty-print API response, truncating large lists and exposing pagination state.
+def _fmt(data: dict | list) -> str:
+    """Pretty-print API response and expose pagination state.
 
-    The trailer always includes page, pageSize, totalCount, and hasMore so the
-    caller can decide whether to fetch more pages.
+    Returns every item ServiceTitan returned — the caller's `page_size` is the
+    only knob that governs output size. We do NOT further truncate here, because
+    a hidden cap causes silent undercounts: callers assume `hasMore=False` means
+    the result is complete when it actually only means "no more API pages."
+
+    The trailer reports page, pageSize, totalCount, and hasMore so the caller
+    can decide whether to fetch another page.
     """
     if isinstance(data, dict) and "data" in data:
         items = data["data"]
-        total = data.get("totalCount", len(items))
+        raw_total = data.get("totalCount")
+        total_display = raw_total if raw_total is not None else "unknown"
         page = data.get("page", 1)
         page_size = data.get("pageSize", len(items))
         has_more = data.get("hasMore")
         if has_more is None:
-            # Infer when ST didn't send it explicitly.
-            has_more = (page * page_size) < total if total else False
-        shown = min(len(items), max_items)
-        if len(items) > max_items:
-            items = items[:max_items]
+            # ST didn't send hasMore — infer.
+            if raw_total is not None:
+                has_more = (page * page_size) < raw_total
+            else:
+                # Without a total, a full page is the only signal of "more".
+                has_more = len(items) >= page_size > 0
         note = (
-            f"\n\n(Showing {shown} of {total} results — "
+            f"\n\n(Showing {len(items)} of {total_display} results — "
             f"page {page}, pageSize {page_size}, hasMore={has_more})"
         )
         return json.dumps(items, indent=2, default=str) + note
@@ -278,6 +289,11 @@ async def list_jobs(
 
     status values: Scheduled, InProgress, Hold, Completed, Canceled.
     Date format: YYYY-MM-DD.
+
+    page_size is passed through to ServiceTitan (no client-side cap). For
+    attribution / counting work, pick a page_size large enough to return every
+    record in one call, then verify with the `hasMore=…` footer — do NOT infer
+    totals from the number of items displayed.
     """
     client = _get_client()
     params: dict = {}
@@ -1163,6 +1179,9 @@ async def list_campaigns(page: int = 1, page_size: int = 200) -> str:
     When to use: resolving campaignId on a job or lead to the channel
     name, or enumerating what channels exist. Small and static — cache it.
     When NOT: for spend data, use `list_campaign_costs`.
+
+    page_size is passed through to ServiceTitan. Trust the `hasMore=…` footer
+    over the item count when deciding whether you've seen every campaign.
     """
     client = _get_client()
     data = await client.list_resource("marketing", "campaigns", page, page_size)
