@@ -216,7 +216,7 @@ class ServiceTitanClient:
         path: str,
         *,
         params: dict | None = None,
-        json_body: dict | None = None,
+        json_body: dict | list | None = None,
     ) -> dict:
         url = f"{API_BASE}{path}"
         limiter = self._limiter_for(path)
@@ -258,13 +258,13 @@ class ServiceTitanClient:
         """GET request. `path` should start with / e.g. /crm/v2/tenant/{tenant}/customers"""
         return await self._request("GET", path, params=params)
 
-    async def post(self, path: str, json_body: dict | None = None, timeout: float = 60) -> dict:
+    async def post(self, path: str, json_body: dict | list | None = None, timeout: float = 60) -> dict:
         return await self._request("POST", path, json_body=json_body)
 
-    async def patch(self, path: str, json_body: dict | None = None, timeout: float = 60) -> dict:
+    async def patch(self, path: str, json_body: dict | list | None = None, timeout: float = 60) -> dict:
         return await self._request("PATCH", path, json_body=json_body)
 
-    async def put(self, path: str, json_body: dict | None = None, timeout: float = 60) -> dict:
+    async def put(self, path: str, json_body: dict | list | None = None, timeout: float = 60) -> dict:
         return await self._request("PUT", path, json_body=json_body)
 
     # -- Convenience helpers --

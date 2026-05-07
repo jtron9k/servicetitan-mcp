@@ -1146,7 +1146,7 @@ async def run_report(
     tenant: str,
     report_id: int,
     category: str,
-    parameters: str | None = None,
+    parameters: dict | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> str:
@@ -1163,25 +1163,25 @@ async def run_report(
          `category` arg).
       2. `list_reports_in_category` → pick a report_id AND read its
          required parameters.
-      3. Call this tool with the parameters as a JSON STRING, e.g.
-         `parameters='{"From":"2024-01-01","To":"2024-12-31","BusinessUnitIds":[1,2,3]}'`
+      3. Call this tool with parameters as a JSON object, e.g.
+         `parameters={"From":"2024-01-01","To":"2024-12-31","BusinessUnitIds":[1,2,3]}`
 
     Rate limits: reporting has its own bucket (~3 req/min). If you need
     multiple reports, space them out.
 
     tenant: name of a configured ServiceTitan tenant (call list_tenants)
     """
+    if parameters is not None and not isinstance(parameters, dict):
+        return "Error: 'parameters' must be a JSON object mapping report-param names to values."
+
     client = _resolve(tenant)
 
-    body: dict = {"parameters": []}
-    if parameters:
-        try:
-            param_map = json.loads(parameters)
-        except json.JSONDecodeError:
-            return "Error: 'parameters' must be a valid JSON string."
-        body["parameters"] = [
+    param_map = parameters or {}
+    body: dict = {
+        "parameters": [
             {"name": name, "value": value} for name, value in param_map.items()
         ]
+    }
 
     path = (
         f"/reporting/v2/tenant/{client.tenant_id}/report-category/{category}"
@@ -1481,8 +1481,8 @@ async def servicetitan_api_call(
     tenant: str,
     method: str,
     path: str,
-    query_params: str | None = None,
-    body: str | None = None,
+    query_params: dict | None = None,
+    body: dict | list | None = None,
 ) -> str:
     """ESCAPE HATCH: raw HTTP call to any ServiceTitan API endpoint.
 
@@ -1499,42 +1499,32 @@ async def servicetitan_api_call(
       path: full API path starting with /. Use the literal string
             `{tenant_id}` as a placeholder — it's substituted at runtime.
             Example: `/crm/v2/tenant/{tenant_id}/customers?phone=555-0100`
-      query_params: JSON STRING of query params, e.g. `'{"pageSize":100}'`
-      body: JSON STRING of request body for POST/PATCH/PUT
+      query_params: JSON object of query params, e.g. `{"pageSize":100}`
+      body: JSON object (or array) for POST/PATCH/PUT request body
 
     Still goes through the same rate-limit + retry layer as typed tools
     (including the reporting bucket for `/reporting/*` paths).
 
     tenant: name of a configured ServiceTitan tenant (call list_tenants)
     """
+    if query_params is not None and not isinstance(query_params, dict):
+        return "Error: 'query_params' must be a JSON object."
+    if body is not None and not isinstance(body, (dict, list)):
+        return "Error: 'body' must be a JSON object or array."
+
     client = _resolve(tenant)
-    # Replace tenant placeholder
     resolved_path = path.replace("{tenant_id}", client.tenant_id)
-
-    params = None
-    if query_params:
-        try:
-            params = json.loads(query_params)
-        except json.JSONDecodeError:
-            return "Error: query_params must be valid JSON."
-
-    json_body = None
-    if body:
-        try:
-            json_body = json.loads(body)
-        except json.JSONDecodeError:
-            return "Error: body must be valid JSON."
 
     try:
         method_upper = method.upper()
         if method_upper == "GET":
-            data = await client.get(resolved_path, params=params)
+            data = await client.get(resolved_path, params=query_params)
         elif method_upper == "POST":
-            data = await client.post(resolved_path, json_body=json_body)
+            data = await client.post(resolved_path, json_body=body)
         elif method_upper == "PATCH":
-            data = await client.patch(resolved_path, json_body=json_body)
+            data = await client.patch(resolved_path, json_body=body)
         elif method_upper == "PUT":
-            data = await client.put(resolved_path, json_body=json_body)
+            data = await client.put(resolved_path, json_body=body)
         else:
             return f"Unsupported method: {method}. Use GET, POST, PATCH, or PUT."
         return _fmt(data)
