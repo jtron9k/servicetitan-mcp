@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import time
 import traceback
 
 from mcp.server.fastmcp import FastMCP
@@ -71,7 +72,12 @@ HOW TO USE THIS SERVER EFFICIENTLY:
    `list_tag_types`, `list_activity_categories`, `list_pricebook_categories`,
    `list_inventory_vendors`, `list_trucks`, `list_user_roles`,
    `list_campaigns`) rarely change. Call once per conversation and reuse
-   the IDs — re-fetching them on every question wastes calls.
+   the IDs — re-fetching them on every question wastes calls. If your
+   client supports MCP resources, prefer reading
+   `servicetitan://lookups/{tenant}/{kind}` (or `servicetitan://tenants`
+   for tenant discovery) over the corresponding `list_*` tool — same
+   data, no tool-call charge, and the server caches each (tenant, kind)
+   for an hour.
 
 7. `list_*` USUALLY BEATS `get_*`. The list payload almost always contains
    every field `get_*` would return for the same record. Only call `get_*`
@@ -1516,6 +1522,31 @@ _LOOKUP_KINDS: dict[str, tuple[str, str]] = {
     "campaigns": ("marketing", "campaigns"),
 }
 
+# Per-(tenant, kind) cache for the lookup resource. These tables are static
+# config — re-fetching them on every read defeats the whole point of exposing
+# them as resources. Tests reach into this dict directly to assert cache
+# behavior; keep its shape stable.
+_RESOURCE_CACHE_TTL_SECONDS = 3600
+_resource_cache: dict[tuple[str, str], tuple[float, str]] = {}
+
+
+def _resource_cache_get(tenant: str, kind: str) -> str | None:
+    entry = _resource_cache.get((tenant, kind))
+    if entry is None:
+        return None
+    expires_at, payload = entry
+    if time.monotonic() >= expires_at:
+        _resource_cache.pop((tenant, kind), None)
+        return None
+    return payload
+
+
+def _resource_cache_put(tenant: str, kind: str, payload: str) -> None:
+    _resource_cache[(tenant, kind)] = (
+        time.monotonic() + _RESOURCE_CACHE_TTL_SECONDS,
+        payload,
+    )
+
 
 @mcp.tool()
 async def get_lookup_tables(
@@ -1585,6 +1616,68 @@ async def get_lookup_tables(
         ),
     }
     return json.dumps(out, indent=2, default=str)
+
+
+@mcp.resource(
+    "servicetitan://tenants",
+    name="ServiceTitan tenants",
+    description="Configured tenant names — names only, no IDs or secrets.",
+    mime_type="application/json",
+)
+def resource_tenants() -> str:
+    """Static blob of configured tenant names.
+
+    Mirrors `list_tenants` so clients that auto-prefetch resources avoid
+    spending the bootstrap tool call.
+    """
+    return json.dumps({"tenants": tenant_names()}, indent=2)
+
+
+@mcp.resource(
+    "servicetitan://lookups/{tenant}/{kind}",
+    name="ServiceTitan static lookup table",
+    description=(
+        "One static-config lookup table for a tenant. `kind` is one of: "
+        "business_units, job_types, zones, warehouses, payment_types, "
+        "tax_zones, payment_terms, membership_types, tag_types, "
+        "activity_categories, pricebook_categories, inventory_vendors, "
+        "trucks, user_roles, campaigns. Cached server-side per (tenant, "
+        "kind) for one hour."
+    ),
+    mime_type="application/json",
+)
+async def resource_lookup(tenant: str, kind: str) -> str:
+    """Read one static lookup table for `tenant`.
+
+    On cache hit, returns the cached JSON without touching the API. On
+    miss, fetches via `client.list_resource(...)` with the same per-tenant
+    rate-limit machinery the tools use, caches the result, and returns it.
+    """
+    tenant_key = tenant.strip().lower()
+    if kind not in _LOOKUP_KINDS:
+        return json.dumps(
+            {
+                "error": f"unknown kind: {kind!r}",
+                "valid_kinds": sorted(_LOOKUP_KINDS),
+            },
+            indent=2,
+        )
+
+    cached = _resource_cache_get(tenant_key, kind)
+    if cached is not None:
+        return cached
+
+    client = _resolve(tenant_key)
+    category, resource = _LOOKUP_KINDS[kind]
+    data = await client.list_resource(category, resource, 1, 200)
+    items = data.get("data", []) if isinstance(data, dict) else []
+    payload = json.dumps(
+        {"tenant": tenant_key, "kind": kind, "items": items},
+        indent=2,
+        default=str,
+    )
+    _resource_cache_put(tenant_key, kind, payload)
+    return payload
 
 
 # ═══════════════════════════════════════════════════════════════════════
