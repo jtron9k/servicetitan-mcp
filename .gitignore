@@ -10,3 +10,5 @@ st_credentials.txt
 smoke_tenants.py
 next_steps.md
 .worktrees/
+report_exports/
+.DS_Store

@@ -7,6 +7,9 @@ Environment variables (set in claude_desktop_config.json or .env):
   ST_TENANT_<NAME>_CLIENT_ID      — Client ID for <NAME>
   ST_TENANT_<NAME>_CLIENT_SECRET  — Client Secret for <NAME>
   ST_TENANT_<NAME>_APP_KEY        — App Key from the developer portal
+  ST_OUTPUTS_DIR                  — (optional) default directory for
+                                    `run_report_to_file`; falls back to the
+                                    in-repo `report_exports/` if unset
 
 Every @mcp.tool() takes a required `tenant` argument naming one of the
 configured tenants. Call `list_tenants` to discover the names.
@@ -16,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 import time
 import traceback
@@ -24,6 +28,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .client import ServiceTitanClient, main_limiter_for, reporting_limiter_for
 from .config import get_tenant, tenant_names
+from .report_export import ReportFileWriter, resolve_output_path
 
 # ── Bootstrap ────────────────────────────────────────────────────────
 
@@ -1455,6 +1460,151 @@ async def run_report(
     )
     data = await client.post(path, json_body=body)
     return _fmt(data)
+
+
+@mcp.tool()
+async def run_report_to_file(
+    tenant: str,
+    report_id: int,
+    category: str,
+    parameters: dict | None = None,
+    format: str = "csv",
+    output_path: str | None = None,
+    output_dir: str | None = None,
+    overwrite: bool = False,
+    page_size: int = 5000,
+) -> str:
+    """Run a report and write the COMPLETE result to a file — use for big reports.
+
+    When to use: a report returns more rows than fit in an inline reply (more
+    than ~100). This auto-paginates the entire report server-side until
+    `hasMore=False`, streams every row to a file, and returns only compact
+    metadata (no row data, a small preview). The caller never paginates or
+    transcribes rows.
+    When NOT: a quick interactive peek at a small report — use `run_report`,
+    which returns rows inline.
+
+    Same report identification as `run_report` (`category`, `report_id`,
+    `parameters`; see its docstring for the discovery flow). Output target:
+      - `output_path`: exact destination file (you choose the name).
+      - `output_dir`: directory; the file is auto-named
+        `report_<id>_<from>_<to>.<ext>`.
+      - neither: the `ST_OUTPUTS_DIR` env dir, else the in-repo
+        `report_exports/` default.
+    `output_path` and `output_dir` are mutually exclusive. By default this
+    errors rather than overwrite an existing file — pass `overwrite=True` to
+    replace it.
+
+    `format`: "csv" (default, most portable) or "jsonl" (one JSON object per
+    line; preserves null/boolean/numeric types better than CSV).
+
+    Notes: large pulls take real wall-clock time under the ~3/min reporting
+    quota (throttling is handled for you, just slow). The result is a
+    point-in-time snapshot; if the date window includes today the live dataset
+    can shift mid-pagination — a `warning` is returned when the streamed row
+    count disagrees with the report's reported total.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    if parameters is not None and not isinstance(parameters, dict):
+        return "Error: 'parameters' must be a JSON object mapping report-param names to values."
+    fmt = format.lower().strip()
+    if fmt not in ("csv", "jsonl"):
+        return "Error: 'format' must be 'csv' or 'jsonl'."
+
+    client = _resolve(tenant)
+
+    try:
+        final = resolve_output_path(
+            output_path=output_path,
+            output_dir=output_dir,
+            report_id=report_id,
+            parameters=parameters,
+            fmt=fmt,
+            overwrite=overwrite,
+        )
+    except (ValueError, FileExistsError) as exc:
+        return f"Error: {exc}"
+
+    param_map = parameters or {}
+    body: dict = {
+        "parameters": [
+            {"name": name, "value": value} for name, value in param_map.items()
+        ]
+    }
+
+    tmp = final.with_name(final.name + ".partial")
+    row_count = 0
+    pages_fetched = 0
+    columns: list[str] = []
+    field_names: list[str] = []
+    total_count_reported = None
+    preview: list[dict] = []
+
+    fh = open(tmp, "w", encoding="utf-8", newline="")
+    try:
+        writer = ReportFileWriter(fh, fmt)
+        page = 1
+        while True:
+            path = (
+                f"/reporting/v2/tenant/{client.tenant_id}/report-category/{category}"
+                f"/reports/{report_id}/data?page={page}&pageSize={page_size}"
+                f"&includeTotal=true"
+            )
+            data = await client.post(path, json_body=body)
+            rows = data.get("data", [])
+
+            if pages_fetched == 0:
+                fields = data.get("fields", []) or []
+                field_names = [f.get("name") for f in fields]
+                columns = [(f.get("label") or f.get("name") or "") for f in fields]
+                total_count_reported = data.get("totalCount")
+                writer.write_header(fields)
+
+            writer.write_rows(rows)
+            row_count += len(rows)
+            pages_fetched += 1
+            for row in rows:
+                if len(preview) >= 5:
+                    break
+                preview.append(dict(zip(field_names, row)))
+
+            has_more = data.get("hasMore")
+            if has_more is None:
+                # hasMore is required per ST docs; infer defensively if absent.
+                has_more = len(rows) >= page_size > 0
+            if not has_more:
+                break
+            page += 1
+        fh.close()
+        os.replace(tmp, final)
+    except BaseException:
+        fh.close()
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+    meta: dict = {
+        "file_path": str(final),
+        "format": fmt,
+        "row_count": row_count,
+        "pages_fetched": pages_fetched,
+        "has_more": False,
+        "report_id": report_id,
+        "category": category,
+        "columns": columns,
+        "total_count_reported": total_count_reported,
+        "preview": preview,
+    }
+    if total_count_reported is not None and total_count_reported != row_count:
+        meta["warning"] = (
+            f"Streamed {row_count} rows but the report reported "
+            f"totalCount={total_count_reported}. The live dataset may have "
+            f"shifted during pagination (point-in-time snapshot)."
+        )
+    return json.dumps(meta, indent=2, default=str)
 
 
 # ═══════════════════════════════════════════════════════════════════════

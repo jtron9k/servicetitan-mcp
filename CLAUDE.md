@@ -85,6 +85,8 @@ Legacy single-tenant vars (`ST_APP_KEY`, `ST_CLIENT_ID`, `ST_CLIENT_SECRET`, `ST
 
 Optional tuning (defaults in parens): `ST_RATE_LIMIT_RPS` (30, per tenant), `ST_REPORTING_RPM` (3, per tenant), `ST_MAX_CONCURRENCY` (10, process-wide).
 
+`ST_OUTPUTS_DIR` (optional) — default output directory for `run_report_to_file`. If unset, exports land in the in-repo `report_exports/` (gitignored). Path-resolution and CSV/JSONL serialization live in [`servicetitan_mcp/report_export.py`](servicetitan_mcp/report_export.py); the tool streams pages to a `.partial` file and `os.replace`s on success only.
+
 ## Adding a new tool
 
 Follow the existing pattern — `list_customers` in [server.py](servicetitan_mcp/server.py) is a clean reference:

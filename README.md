@@ -199,7 +199,8 @@ Every tool below takes `tenant: str` as its first required argument. See "Multi-
 - `list_reports_in_category` — Reports in a category (by category slug)
 - `get_report` — One report's parameter schema + output fields (by category slug + id)
 - `get_report_parameter_values` — Resolve a parameter's allowed values (dynamic value set)
-- `run_report` — Run a dynamic report
+- `run_report` — Run a dynamic report (returns rows inline; for small/interactive pulls)
+- `run_report_to_file` — Auto-paginate a whole report and write it to a CSV/JSONL file, returning only metadata (for reports too large to return inline)
 
 ### Payroll
 - `list_payrolls` — Payroll runs
@@ -290,6 +291,7 @@ This server layers the following in front of those limits:
   - `ST_RATE_LIMIT_RPS` (default `30`)
   - `ST_REPORTING_RPM` (default `3`)
   - `ST_MAX_CONCURRENCY` (default `10`) — process-wide cap on in-flight requests across all tenants
+  - `ST_OUTPUTS_DIR` (optional) — default directory for `run_report_to_file` output; falls back to the in-repo `report_exports/` if unset. Must be readable by whatever consumes the file (e.g. your sandbox/file tools).
 - **Automatic retry** on `429`, `502`, `503`, `504`:
   - Honors `Retry-After` header if the server sends one.
   - Otherwise exponential backoff: 1s → 2s → 4s, max 3 retries.
