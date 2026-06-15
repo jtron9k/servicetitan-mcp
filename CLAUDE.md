@@ -42,6 +42,14 @@ When a session ends:
 
 Python MCP server wrapping ServiceTitan's REST API. Exposes ~60 tools across CRM, Jobs, Dispatch, Estimates, Invoicing, Pricebook, Inventory, Memberships, Payroll, Reporting, Forms, Marketing. Full tool catalog and user-facing setup live in [README.md](README.md).
 
+## ServiceTitan API docs
+For any ServiceTitan API question (endpoints, auth, schemas, rate limits, webhooks),
+fetch docs via Context7 using this exact library ID:
+
+  ctx7 docs /websites/developer_servicetitan_io "<specific question>"
+
+Use the ID directly. Do not run `ctx7 library` to resolve "servicetitan" first.
+
 ## Stack & entry point
 
 - Python 3.10+. Deps: `mcp[cli]`, `httpx[socks]`, `pydantic`.
