@@ -117,7 +117,7 @@ _APP_KEY per tenant. See README for the full migration.
 
 Migration takes ~5 minutes per tenant: rename the four old vars with an `ST_TENANT_<NAME>_` prefix, and add `ST_TENANTS=<name>` naming that tenant. To add additional tenants, repeat the four-var block with new names and extend `ST_TENANTS`.
 
-## Available Tools (60 + `list_tenants`)
+## Available Tools (71 + `list_tenants`)
 
 Every tool below takes `tenant: str` as its first required argument. See "Multi-Tenant Usage" above.
 
@@ -127,14 +127,18 @@ Every tool below takes `tenant: str` as its first required argument. See "Multi-
 - `list_locations` — List service locations
 - `get_location` — Get location details
 - `list_leads` — List leads/opportunities
+- `get_lead` — Get lead details by ID
 - `list_bookings` — List bookings
+- `get_booking` — Get booking details by ID
 - `list_contacts` — List customer contacts
 
 ### Job Planning & Management
 - `list_jobs` — List jobs with filters (status, customer, date range)
 - `get_job` — Get full job details
 - `list_appointments` — List appointments by date range
+- `get_appointment` — Get appointment details by ID
 - `list_job_types` — List configured job types
+- `get_job_type` — Get one job-type definition by ID
 - `list_projects` — List projects
 - `get_project` — Get project details
 
@@ -155,8 +159,10 @@ Every tool below takes `tenant: str` as its first required argument. See "Multi-
 ### Dispatch
 - `list_appointment_assignments` — Technician-to-appointment assignments
 - `list_technician_shifts` — Shift schedules
+- `get_technician_shift` — Get one shift by ID
 - `list_zones` — Dispatch zones
 - `list_non_job_appointments` — Meetings, training, etc.
+- `get_non_job_appointment` — Get one non-job appointment by ID
 
 ### Pricebook
 - `list_pricebook_services` — Sellable services
@@ -166,20 +172,24 @@ Every tool below takes `tenant: str` as its first required argument. See "Multi-
 
 ### Inventory
 - `list_purchase_orders` — Purchase orders
+- `get_purchase_order` — Get one purchase order (with line items) by ID
 - `list_warehouses` — Warehouses
 - `list_inventory_vendors` — Vendors/suppliers
 - `list_trucks` — Vehicle inventory
 
 ### Memberships
 - `list_memberships` — Customer memberships
+- `get_membership` — Get one customer membership by ID
 - `list_membership_types` — Membership type definitions
 - `list_recurring_services` — Recurring services
+- `get_recurring_service` — Get one recurring service by ID
 
 ### Settings
 - `list_tenants` — Configured tenant names (no `tenant` arg)
 - `list_employees` — Employees
 - `get_employee` — Employee details
 - `list_technicians` — Technicians
+- `get_technician` — Get one technician by ID
 - `list_business_units` — Business units
 - `list_tag_types` — Tag types
 - `list_user_roles` — User roles
@@ -198,6 +208,7 @@ Every tool below takes `tenant: str` as its first required argument. See "Multi-
 
 ### Telecom
 - `list_calls` — Phone calls
+- `get_call` — Get one call (with recording links) by ID
 
 ### Forms
 - `list_forms` — Form templates

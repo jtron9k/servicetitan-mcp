@@ -294,6 +294,21 @@ async def list_leads(
 
 
 @mcp.tool()
+async def get_lead(tenant: str, lead_id: int) -> str:
+    """Get the full record for one lead by numeric ID.
+
+    When to use: you already have a lead_id (e.g. from `list_leads`) and need
+    the full lead detail (summary, call/booking linkage, dismissal reason).
+    When NOT: if you only know the customer, start from `list_leads`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("crm", "leads", lead_id)
+    return json.dumps(data, indent=2, default=str)
+
+
+@mcp.tool()
 async def list_bookings(
     tenant: str,
     page: int = 1,
@@ -316,6 +331,22 @@ async def list_bookings(
         params["status"] = status
     data = await client.list_resource("crm", "bookings", page, page_size, params)
     return _fmt(data)
+
+
+@mcp.tool()
+async def get_booking(tenant: str, booking_id: int) -> str:
+    """Get the full record for one booking by numeric ID.
+
+    When to use: you have a booking_id (e.g. from `list_bookings`) and need the
+    full intake detail (customer/address, source, dismissal reason, jobId once
+    converted).
+    When NOT: if the booking is already a scheduled job, query `list_jobs`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("crm", "bookings", booking_id)
+    return json.dumps(data, indent=2, default=str)
 
 
 @mcp.tool()
@@ -439,6 +470,22 @@ async def list_appointments(
 
 
 @mcp.tool()
+async def get_appointment(tenant: str, appointment_id: int) -> str:
+    """Get one appointment slot by numeric ID.
+
+    When to use: you have an appointmentId (e.g. from `list_appointments`, a
+    job, or an assignment) and need its window, status, and job linkage.
+    When NOT: to enumerate the calendar, use `list_appointments` with a date
+    range.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("jpm", "appointments", appointment_id)
+    return json.dumps(data, indent=2, default=str)
+
+
+@mcp.tool()
 async def list_job_types(tenant: str, page: int = 1, page_size: int = 200) -> str:
     """List all job-type definitions in ServiceTitan — static config.
 
@@ -452,6 +499,22 @@ async def list_job_types(tenant: str, page: int = 1, page_size: int = 200) -> st
     client = _resolve(tenant)
     data = await client.list_resource("jpm", "job-types", page, page_size)
     return _fmt(data)
+
+
+@mcp.tool()
+async def get_job_type(tenant: str, job_type_id: int) -> str:
+    """Get one job-type definition by numeric ID — static config.
+
+    When to use: resolving a single jobTypeId (from a job, lead, or booking) to
+    its full definition (name, skills, duration, default actions).
+    When NOT: to map many ids at once, `list_job_types` (or the bundled
+    `get_lookup_tables`) returns the whole small, static set in one call.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("jpm", "job-types", job_type_id)
+    return json.dumps(data, indent=2, default=str)
 
 
 @mcp.tool()
@@ -561,6 +624,12 @@ async def list_payments(
     yesterday". Use with `created_on_or_after` for date slices.
     When NOT: for amounts invoiced (billed but not necessarily collected),
     use `list_invoices`. Those are distinct accounting events.
+
+    Note: ServiceTitan exposes no single-record GET for payments (no
+    `GET /accounting/.../payments/{id}` — it 404s), so there is no `get_payment`
+    tool. To fetch one payment, filter this list by date, or use the
+    `servicetitan_api_call` escape hatch. (Same is true for `forms` and dispatch
+    `appointment-assignments`.)
 
     tenant: name of a configured ServiceTitan tenant (call list_tenants)
     """
@@ -770,6 +839,22 @@ async def list_technician_shifts(
 
 
 @mcp.tool()
+async def get_technician_shift(tenant: str, shift_id: int) -> str:
+    """Get one technician shift by numeric ID.
+
+    When to use: you have a shift id (e.g. from `list_technician_shifts`) and
+    need its type, window, technician, and timesheet-code linkage.
+    When NOT: to enumerate availability, use `list_technician_shifts` with a
+    date range.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("dispatch", "technician-shifts", shift_id)
+    return json.dumps(data, indent=2, default=str)
+
+
+@mcp.tool()
 async def list_zones(tenant: str, page: int = 1, page_size: int = 200) -> str:
     """List dispatch zones (geographic service areas) — static config.
 
@@ -804,6 +889,21 @@ async def list_non_job_appointments(
         params["startsOnOrAfter"] = starts_on_or_after
     data = await client.list_resource("dispatch", "non-job-appointments", page, page_size, params)
     return _fmt(data)
+
+
+@mcp.tool()
+async def get_non_job_appointment(tenant: str, non_job_appointment_id: int) -> str:
+    """Get one non-job (internal) appointment by numeric ID.
+
+    When to use: you have an id (e.g. from `list_non_job_appointments`) and need
+    the full time-block detail (technician, duration, timesheet code).
+    When NOT: for customer-facing appointments, use `get_appointment`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("dispatch", "non-job-appointments", non_job_appointment_id)
+    return json.dumps(data, indent=2, default=str)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -924,6 +1024,22 @@ async def list_purchase_orders(
 
 
 @mcp.tool()
+async def get_purchase_order(tenant: str, purchase_order_id: int) -> str:
+    """Get one purchase order by numeric ID, with line items.
+
+    When to use: you have a PO id (e.g. from `list_purchase_orders`) and need
+    its full detail — vendor, ship-to, status, and each line (sku, quantity,
+    cost, quantity received).
+    When NOT: for the resulting vendor bill, use `list_inventory_bills`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("inventory", "purchase-orders", purchase_order_id)
+    return json.dumps(data, indent=2, default=str)
+
+
+@mcp.tool()
 async def list_warehouses(tenant: str, page: int = 1, page_size: int = 200) -> str:
     """List inventory warehouses (storage locations) — static config.
 
@@ -993,6 +1109,22 @@ async def list_memberships(
 
 
 @mcp.tool()
+async def get_membership(tenant: str, membership_id: int) -> str:
+    """Get one customer membership by numeric ID.
+
+    When to use: you have a membershipId (e.g. from `list_memberships`, a
+    recurring service's `membershipId`, or an invoice) and need full agreement
+    detail — status, billing frequency, term dates, deferred revenue.
+    When NOT: for the plan CATALOG, use `list_membership_types`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("memberships", "memberships", membership_id)
+    return json.dumps(data, indent=2, default=str)
+
+
+@mcp.tool()
 async def list_membership_types(tenant: str, page: int = 1, page_size: int = 200) -> str:
     """List membership PLAN definitions (Gold, Silver, etc.) — static config.
 
@@ -1022,6 +1154,22 @@ async def list_recurring_services(
     client = _resolve(tenant)
     data = await client.list_resource("memberships", "recurring-services", page, page_size)
     return _fmt(data)
+
+
+@mcp.tool()
+async def get_recurring_service(tenant: str, recurring_service_id: int) -> str:
+    """Get one recurring service by numeric ID.
+
+    When to use: you have a recurring-service id (e.g. from
+    `list_recurring_services`) and need its full schedule detail — recurrence
+    rule, location, job type, and the `membershipId` it belongs to.
+    When NOT: for the parent agreement, use `get_membership`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("memberships", "recurring-services", recurring_service_id)
+    return json.dumps(data, indent=2, default=str)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1088,6 +1236,22 @@ async def list_technicians(
         params["active"] = "True"
     data = await client.list_resource("settings", "technicians", page, page_size, params)
     return _fmt(data)
+
+
+@mcp.tool()
+async def get_technician(tenant: str, technician_id: int) -> str:
+    """Get one technician by numeric ID.
+
+    When to use: you have a technicianId (e.g. from `list_technicians`, an
+    appointment assignment, or a job) and need full tech detail — skills,
+    licenses, zones, rates, last-known location.
+    When NOT: for non-tech staff, use `get_employee`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("settings", "technicians", technician_id)
+    return json.dumps(data, indent=2, default=str)
 
 
 @mcp.tool()
@@ -1394,6 +1558,22 @@ async def list_calls(
     return _fmt(data)
 
 
+@mcp.tool()
+async def get_call(tenant: str, call_id: int) -> str:
+    """Get one telecom call by numeric ID, with recording/voicemail links.
+
+    When to use: drilling into a single call surfaced by `list_calls` — its
+    recording URL, agent, campaign, and tags.
+    Note: in `list_calls` rows the meaningful id is `leadCall.id` (the wrapper
+    object's own top-level `id` is 0) — pass that value here.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.get_resource("telecom", "calls", call_id)
+    return json.dumps(data, indent=2, default=str)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  FORMS
 # ═══════════════════════════════════════════════════════════════════════
@@ -1404,6 +1584,9 @@ async def list_forms(tenant: str, page: int = 1, page_size: int = 200) -> str:
 
     When to use: form-config audit, resolving formId from a submission.
     When NOT: for actual completed forms, use `list_form_submissions`.
+
+    Note: ServiceTitan exposes no single-record GET for forms
+    (`GET /forms/.../forms/{id}` 404s), so there is no `get_form` tool.
 
     tenant: name of a configured ServiceTitan tenant (call list_tenants)
     """
