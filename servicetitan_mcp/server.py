@@ -709,6 +709,11 @@ async def list_job_hold_reasons(
     return _fmt(data)
 
 
+# Job/forms ATTACHMENTS intentionally NOT wrapped: `jpm/.../jobs/{id}/attachments`
+# → 404 (verified live, hoffmann_stl). No list endpoint at that path. Revisit
+# only if ServiceTitan documents an attachments resource. Don't re-investigate.
+
+
 @mcp.tool()
 async def list_appointments(
     tenant: str,
@@ -1177,6 +1182,44 @@ async def get_non_job_appointment(tenant: str, non_job_appointment_id: int) -> s
     return json.dumps(data, indent=2, default=str)
 
 
+@mcp.tool()
+async def list_arrival_windows(tenant: str, page: int = 1, page_size: int = 200) -> str:
+    """List arrival windows (bookable time-window templates) — static config.
+
+    When to use: understanding the scheduling windows offered to customers
+    (e.g. 9:00–11:30), resolving an arrivalWindow on a booking/appointment, or
+    auditing which business units a window applies to. Cache the result.
+    When NOT: for an actual scheduled slot, use `list_appointments`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.list_resource("dispatch", "arrival-windows", page, page_size)
+    return _fmt(data)
+
+
+@mcp.tool()
+async def list_teams(tenant: str, page: int = 1, page_size: int = 200) -> str:
+    """List dispatch teams (technician groupings) — static config.
+
+    When to use: resolving a teamId on a technician/shift record, org-structure
+    questions ("which teams exist").
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.list_resource("dispatch", "teams", page, page_size)
+    return _fmt(data)
+
+
+# Dispatch read endpoints intentionally NOT wrapped (verified live, hoffmann_stl):
+#   - Real-time GPS / technician locations: `dispatch/.../gps-pings` → 404. The
+#     public REST API does not expose raw GPS pings. Don't re-investigate.
+#   - Capacity: `dispatch/.../capacity` is POST-only (an availability check that
+#     takes a body); a GET 404s. Not a read-list — use the escape hatch with POST
+#     if a capacity check is ever needed.
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  PRICEBOOK — Services, Materials, Equipment, Categories
 # ═══════════════════════════════════════════════════════════════════════
@@ -1347,6 +1390,190 @@ async def list_trucks(tenant: str, page: int = 1, page_size: int = 200) -> str:
     """
     client = _resolve(tenant)
     data = await client.list_resource("inventory", "trucks", page, page_size)
+    return _fmt(data)
+
+
+# Inventory transaction feeds. These records embed a full line-`items` array
+# each, so they default to a smaller page_size than the usual 200. All four
+# accept ST's standard createdOnOrAfter/createdOnOrBefore date filters
+# (verified live against hoffmann_stl).
+
+@mcp.tool()
+async def list_inventory_adjustments(
+    tenant: str,
+    page: int = 1,
+    page_size: int = 50,
+    created_on_or_after: str | None = None,
+    created_on_or_before: str | None = None,
+    business_unit_id: int | None = None,
+    active: bool | None = None,
+) -> str:
+    """List inventory adjustments (manual stock quantity/value corrections).
+
+    When to use: shrinkage / write-off analysis, reconciling counted vs booked
+    stock, auditing who adjusted inventory and why. Each record carries its
+    line items, costs, and the accounting batch.
+    When NOT: for stock moved between locations use `list_inventory_transfers`;
+    for vendor receipts use `list_inventory_receipts`.
+
+    business_unit_id: filter to a single business unit (maps to businessUnitIds).
+    created_on_or_after / _before: ISO date "YYYY-MM-DD".
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    params: dict = {}
+    if created_on_or_after:
+        params["createdOnOrAfter"] = created_on_or_after
+    if created_on_or_before:
+        params["createdOnOrBefore"] = created_on_or_before
+    if business_unit_id is not None:
+        params["businessUnitIds"] = business_unit_id
+    if active is not None:
+        params["active"] = active
+    data = await client.list_resource("inventory", "adjustments", page, page_size, params)
+    return _fmt(data)
+
+
+@mcp.tool()
+async def list_inventory_transfers(
+    tenant: str,
+    page: int = 1,
+    page_size: int = 50,
+    created_on_or_after: str | None = None,
+    created_on_or_before: str | None = None,
+    active: bool | None = None,
+) -> str:
+    """List inventory transfers (stock moved between locations/trucks).
+
+    When to use: tracking parts requisitioned to a truck/job, transfer aging
+    (Pending vs Received), install-requisition audits. Each record carries its
+    line items and from/to locations.
+    When NOT: for manual quantity corrections use `list_inventory_adjustments`;
+    for vendor receipts use `list_inventory_receipts`.
+
+    created_on_or_after / _before: ISO date "YYYY-MM-DD".
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    params: dict = {}
+    if created_on_or_after:
+        params["createdOnOrAfter"] = created_on_or_after
+    if created_on_or_before:
+        params["createdOnOrBefore"] = created_on_or_before
+    if active is not None:
+        params["active"] = active
+    data = await client.list_resource("inventory", "transfers", page, page_size, params)
+    return _fmt(data)
+
+
+@mcp.tool()
+async def list_inventory_receipts(
+    tenant: str,
+    page: int = 1,
+    page_size: int = 50,
+    created_on_or_after: str | None = None,
+    created_on_or_before: str | None = None,
+    business_unit_id: int | None = None,
+    active: bool | None = None,
+) -> str:
+    """List inventory receipts (items received against purchase orders).
+
+    When to use: matching received goods to POs, three-way-match prep,
+    receiving-activity audits. Each record carries its line items, the source
+    PO, vendor, and amounts.
+    When NOT: for the PO itself use `list_purchase_orders`; for the resulting
+    vendor bill use `list_inventory_bills`.
+
+    business_unit_id: filter to a single business unit (maps to businessUnitIds).
+    created_on_or_after / _before: ISO date "YYYY-MM-DD".
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    params: dict = {}
+    if created_on_or_after:
+        params["createdOnOrAfter"] = created_on_or_after
+    if created_on_or_before:
+        params["createdOnOrBefore"] = created_on_or_before
+    if business_unit_id is not None:
+        params["businessUnitIds"] = business_unit_id
+    if active is not None:
+        params["active"] = active
+    data = await client.list_resource("inventory", "receipts", page, page_size, params)
+    return _fmt(data)
+
+
+@mcp.tool()
+async def list_inventory_returns(
+    tenant: str,
+    page: int = 1,
+    page_size: int = 50,
+    created_on_or_after: str | None = None,
+    created_on_or_before: str | None = None,
+    active: bool | None = None,
+) -> str:
+    """List inventory returns (items returned to a vendor for credit).
+
+    When to use: vendor-credit tracking, return aging (Pending vs credit
+    received), reconciling returns against the originating PO/receipt. Each
+    record carries its line items and return amounts.
+    When NOT: for the inbound receipt use `list_inventory_receipts`; for the
+    PO use `list_purchase_orders`.
+
+    created_on_or_after / _before: ISO date "YYYY-MM-DD".
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    params: dict = {}
+    if created_on_or_after:
+        params["createdOnOrAfter"] = created_on_or_after
+    if created_on_or_before:
+        params["createdOnOrBefore"] = created_on_or_before
+    if active is not None:
+        params["active"] = active
+    data = await client.list_resource("inventory", "returns", page, page_size, params)
+    return _fmt(data)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  CUSTOMER INTERACTIONS — Technician Ratings
+# ═══════════════════════════════════════════════════════════════════════
+
+@mcp.tool()
+async def list_technician_ratings(
+    tenant: str,
+    page: int = 1,
+    page_size: int = 200,
+    technician_id: int | None = None,
+    created_on_or_after: str | None = None,
+    created_on_or_before: str | None = None,
+) -> str:
+    """List technician ratings (customer satisfaction scores per tech/job).
+
+    When to use: technician scorecards, CSAT trends, surfacing low-rated jobs
+    for follow-up.
+    When NOT: for the job itself use `get_job`; for call recordings/leads use
+    `list_calls`.
+
+    technician_id: filter to one technician's ratings.
+    created_on_or_after / _before: ISO date "YYYY-MM-DD".
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    params: dict = {}
+    if technician_id is not None:
+        params["technicianId"] = technician_id
+    if created_on_or_after:
+        params["createdOnOrAfter"] = created_on_or_after
+    if created_on_or_before:
+        params["createdOnOrBefore"] = created_on_or_before
+    data = await client.list_resource(
+        "customer-interactions", "technician-ratings", page, page_size, params
+    )
     return _fmt(data)
 
 

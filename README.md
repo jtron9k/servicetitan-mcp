@@ -1,6 +1,6 @@
 # ServiceTitan MCP Server
 
-Connect Claude to ServiceTitan via API. 60 tools covering CRM, Jobs, Accounting, Estimates, Dispatch, Pricebook, Inventory, Memberships, Payroll, Marketing, Reporting, Timesheets, Telecom, and more.
+Connect Claude to ServiceTitan via API. ~90 tools covering CRM, Jobs, Accounting, Estimates, Dispatch, Pricebook, Inventory, Memberships, Payroll, Marketing, Reporting, Timesheets, Telecom, Customer Interactions, and more.
 
 Multi-tenant: one server instance can query any number of ServiceTitan tenants on a per-call basis, including cross-tenant aggregation.
 
@@ -117,7 +117,7 @@ _APP_KEY per tenant. See README for the full migration.
 
 Migration takes ~5 minutes per tenant: rename the four old vars with an `ST_TENANT_<NAME>_` prefix, and add `ST_TENANTS=<name>` naming that tenant. To add additional tenants, repeat the four-var block with new names and extend `ST_TENANTS`.
 
-## Available Tools (81 + `list_tenants`)
+## Available Tools (88 + `list_tenants`)
 
 Every tool below takes `tenant: str` as its first required argument. See "Multi-Tenant Usage" above.
 
@@ -172,6 +172,8 @@ Every tool below takes `tenant: str` as its first required argument. See "Multi-
 - `list_zones` — Dispatch zones
 - `list_non_job_appointments` — Meetings, training, etc.
 - `get_non_job_appointment` — Get one non-job appointment by ID
+- `list_arrival_windows` — Bookable arrival-window templates
+- `list_teams` — Dispatch teams (technician groupings)
 
 ### Pricebook
 - `list_pricebook_services` — Sellable services
@@ -185,6 +187,13 @@ Every tool below takes `tenant: str` as its first required argument. See "Multi-
 - `list_warehouses` — Warehouses
 - `list_inventory_vendors` — Vendors/suppliers
 - `list_trucks` — Vehicle inventory
+- `list_inventory_adjustments` — Manual stock corrections (with line items)
+- `list_inventory_transfers` — Stock moved between locations/trucks
+- `list_inventory_receipts` — Items received against POs
+- `list_inventory_returns` — Items returned to vendors for credit
+
+### Customer Interactions
+- `list_technician_ratings` — Customer satisfaction scores per tech/job
 
 ### Memberships
 - `list_memberships` — Customer memberships
