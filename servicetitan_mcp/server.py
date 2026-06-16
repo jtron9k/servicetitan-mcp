@@ -411,6 +411,138 @@ async def list_contacts(
     return _fmt(data)
 
 
+# ── CRM sub-resources (notes, location contacts, custom-field catalogs) ──
+# Nested paths embed the parent id directly in the `resource` string —
+# list_resource interpolates it verbatim (slash preserved, same as the
+# crm/export/customers/contacts feed). No client.py helper needed.
+#
+# NOT exposed (verified during planning — don't re-investigate):
+#   • Customer/location TAGS read — ServiceTitan has only writes
+#     (POST/DELETE /crm/.../tags/{tagTypeId}); there is no GET. The applied
+#     `tagTypeIds` already appear inline in get_customer / list_customers
+#     (and the location records). Resolve names via list_tag_types.
+#   • Preferred technician — no read endpoint exists (404 on every candidate
+#     path). Use servicetitan_api_call if ST ever ships one. See next_steps.md.
+
+@mcp.tool()
+async def list_customer_notes(
+    tenant: str,
+    customer_id: int,
+    page: int = 1,
+    page_size: int = 200,
+) -> str:
+    """List the free-text notes attached to one customer account.
+
+    When to use: you have a customer_id and need the CSR/office notes
+    (call memos, account flags, "$50 off" promises) that are NOT part of the
+    structured `get_customer` record.
+    When NOT: for job-specific notes use `list_job_notes`; for a location's
+    own notes use `list_location_notes`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.list_resource(
+        "crm", f"customers/{customer_id}/notes", page, page_size
+    )
+    return _fmt(data)
+
+
+@mcp.tool()
+async def list_location_notes(
+    tenant: str,
+    location_id: int,
+    page: int = 1,
+    page_size: int = 200,
+) -> str:
+    """List the free-text notes attached to one service location.
+
+    When to use: you have a location_id and need site-specific notes (gate
+    codes, access instructions, prior-visit memos) distinct from the customer's
+    account notes.
+    When NOT: for account-level notes use `list_customer_notes`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.list_resource(
+        "crm", f"locations/{location_id}/notes", page, page_size
+    )
+    return _fmt(data)
+
+
+@mcp.tool()
+async def list_location_contacts(
+    tenant: str,
+    location_id: int,
+    page: int = 1,
+    page_size: int = 200,
+) -> str:
+    """List the contacts (phone/email) attached to one service location.
+
+    When to use: you have a location_id and need the site's own contacts —
+    these are SEPARATE from the customer-account contacts and are often a
+    different person (property manager, tenant, on-site lead).
+    When NOT: for customer-account contacts use `list_contacts(customer_id=...)`
+    instead — that endpoint covers the account level, so there is no separate
+    customer-contacts tool here.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.list_resource(
+        "crm", f"locations/{location_id}/contacts", page, page_size
+    )
+    return _fmt(data)
+
+
+@mcp.tool()
+async def list_customer_custom_field_types(
+    tenant: str,
+    page: int = 1,
+    page_size: int = 200,
+) -> str:
+    """List the tenant's customer custom-field DEFINITIONS (the field catalog).
+
+    When to use: you need to know which custom fields exist on customers and
+    their types/options — e.g. to interpret the `typeId`/`name` pairs in a
+    customer's inline `customFields`, or to build a mapping table once.
+    When NOT: to read the VALUES on a specific customer, those are already
+    inline in `get_customer` (the `customFields` array) — this tool returns the
+    schema (id, name, dataType, dataTypeOptions), not per-record values.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.list_resource(
+        "crm", "customers/custom-fields", page, page_size
+    )
+    return _fmt(data)
+
+
+@mcp.tool()
+async def list_location_custom_field_types(
+    tenant: str,
+    page: int = 1,
+    page_size: int = 200,
+) -> str:
+    """List the tenant's location custom-field DEFINITIONS (the field catalog).
+
+    When to use: you need the schema of location custom fields (id, name,
+    dataType, options) to interpret the `customFields` carried inline on
+    location records.
+    When NOT: per-record values are already inline in `get_location` /
+    `list_locations` — this tool returns definitions, not values.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.list_resource(
+        "crm", "locations/custom-fields", page, page_size
+    )
+    return _fmt(data)
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  JOB PLANNING & MANAGEMENT — Jobs, Appointments, Projects
 # ═══════════════════════════════════════════════════════════════════════
@@ -473,6 +605,108 @@ async def get_job(tenant: str, job_id: int) -> str:
     client = _resolve(tenant)
     data = await client.get_resource("jpm", "jobs", job_id)
     return json.dumps(data, indent=2, default=str)
+
+
+@mcp.tool()
+async def list_job_notes(
+    tenant: str,
+    job_id: int,
+    page: int = 1,
+    page_size: int = 200,
+) -> str:
+    """List the free-text notes attached to one job.
+
+    When to use: you have a job_id and need the technician/office notes logged
+    against the work order (separate from the job's `summary` field).
+    When NOT: for the structured event timeline (booked/dispatched/completed)
+    use `get_job_history`; for account-level notes use `list_customer_notes`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    data = await client.list_resource(
+        "jpm", f"jobs/{job_id}/notes", page, page_size
+    )
+    return _fmt(data)
+
+
+@mcp.tool()
+async def get_job_history(tenant: str, job_id: int) -> str:
+    """Get the full lifecycle event timeline for one job.
+
+    When to use: you have a job_id and need the ordered audit trail — Job
+    Booked, Technician Assigned/Dispatched/Arrived/Done, Job Rescheduled,
+    Job Completed, Tag Created, etc., each with employeeId + timestamp.
+    When NOT: for free-text notes use `list_job_notes`; for the job's current
+    state use `get_job`.
+
+    Returns the complete timeline in one call as {"history": [...]} — this
+    endpoint is scoped to the single job and is NOT paginated.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    # Non-standard shape ({"history": [...]}, no {data,hasMore} envelope) and
+    # not paginated — call the path directly and return as a single record.
+    data = await client.get(
+        f"/jpm/v2/tenant/{client.tenant_id}/jobs/{job_id}/history"
+    )
+    return json.dumps(data, indent=2, default=str)
+
+
+@mcp.tool()
+async def list_job_cancel_reasons(
+    tenant: str,
+    active_only: bool = True,
+    page: int = 1,
+    page_size: int = 200,
+) -> str:
+    """List the tenant's job cancellation-reason definitions (reference config).
+
+    When to use: resolving a job's cancel reason to its name, or enumerating the
+    valid reasons for reporting. Small, static list — one call returns all of
+    them. `active_only=True` (default) returns only currently-usable reasons;
+    pass `active_only=False` to include retired ones (e.g. to decode an old
+    job's reason).
+    When NOT: don't call this to find canceled jobs — use `list_jobs`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    params: dict = {}
+    if active_only:
+        params["active"] = "True"
+    data = await client.list_resource(
+        "jpm", "job-cancel-reasons", page, page_size, params
+    )
+    return _fmt(data)
+
+
+@mcp.tool()
+async def list_job_hold_reasons(
+    tenant: str,
+    active_only: bool = True,
+    page: int = 1,
+    page_size: int = 200,
+) -> str:
+    """List the tenant's job hold-reason definitions (reference config).
+
+    When to use: resolving why jobs go on hold to a reason name, or enumerating
+    the valid hold reasons. Small, static list — one call returns all.
+    `active_only=True` (default) returns only currently-usable reasons; pass
+    `active_only=False` to include retired ones.
+    When NOT: don't call this to find on-hold jobs — use `list_jobs(status="Hold")`.
+
+    tenant: name of a configured ServiceTitan tenant (call list_tenants)
+    """
+    client = _resolve(tenant)
+    params: dict = {}
+    if active_only:
+        params["active"] = "True"
+    data = await client.list_resource(
+        "jpm", "job-hold-reasons", page, page_size, params
+    )
+    return _fmt(data)
 
 
 @mcp.tool()

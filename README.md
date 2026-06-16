@@ -117,7 +117,7 @@ _APP_KEY per tenant. See README for the full migration.
 
 Migration takes ~5 minutes per tenant: rename the four old vars with an `ST_TENANT_<NAME>_` prefix, and add `ST_TENANTS=<name>` naming that tenant. To add additional tenants, repeat the four-var block with new names and extend `ST_TENANTS`.
 
-## Available Tools (72 + `list_tenants`)
+## Available Tools (81 + `list_tenants`)
 
 Every tool below takes `tenant: str` as its first required argument. See "Multi-Tenant Usage" above.
 
@@ -131,10 +131,19 @@ Every tool below takes `tenant: str` as its first required argument. See "Multi-
 - `list_bookings` — List bookings
 - `get_booking` — Get booking details by ID
 - `list_contacts` — List customer contacts
+- `list_customer_notes` — List a customer's free-text notes
+- `list_location_notes` — List a location's free-text notes
+- `list_location_contacts` — List a location's own contacts (distinct from the customer's)
+- `list_customer_custom_field_types` — Customer custom-field definitions (the catalog, not per-record values)
+- `list_location_custom_field_types` — Location custom-field definitions
 
 ### Job Planning & Management
 - `list_jobs` — List jobs with filters (status, customer, date range)
 - `get_job` — Get full job details
+- `list_job_notes` — List a job's free-text notes
+- `get_job_history` — Full job lifecycle event timeline (booked/dispatched/completed/…)
+- `list_job_cancel_reasons` — Cancellation-reason definitions (`active_only` filter)
+- `list_job_hold_reasons` — Hold-reason definitions (`active_only` filter)
 - `list_appointments` — List appointments by date range
 - `get_appointment` — Get appointment details by ID
 - `list_job_types` — List configured job types
