@@ -1,6 +1,6 @@
 [project]
 name = "servicetitan-mcp"
-version = "1.1.1"
+version = "1.1.2"
 description = "MCP server for ServiceTitan API — connects Claude to jobs, customers, invoices, estimates, dispatch, and more"
 readme = "README.md"
 requires-python = ">=3.10"
