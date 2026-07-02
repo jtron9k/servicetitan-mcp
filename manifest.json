@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "servicetitan-mcp",
   "display_name": "ServiceTitan",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Connect Claude to ServiceTitan: jobs, customers, invoices, estimates, dispatch, pricebook, payroll, memberships, and reporting.",
   "author": {
     "name": "Justin Schmidt"
@@ -59,7 +59,7 @@
     "tenant1_name": {
       "type": "string",
       "title": "Tenant 1 — Name",
-      "description": "Short lowercase nickname for this ServiceTitan tenant (letters, digits, - or _; e.g. acme). You'll use this name when talking to Claude.",
+      "description": "Short nickname for this ServiceTitan tenant (e.g. acme or st_louis). You'll use this name when talking to Claude. Uppercase and spaces are normalized (St Louis -> st_louis).",
       "required": true
     },
     "tenant1_id": {

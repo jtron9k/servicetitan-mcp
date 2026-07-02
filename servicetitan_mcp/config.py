@@ -98,7 +98,9 @@ def _load_slots() -> dict[str, TenantCredentials] | None:
         name = _env(prefix + "NAME")
         if name is None:
             continue
-        name = name.lower()
+        # Forgive the two most likely typing habits in the settings form:
+        # uppercase and spaces ("St Louis" -> "st_louis").
+        name = re.sub(r"\s+", "_", name.lower())
         if not _NAME_RE.match(name):
             raise RuntimeError(
                 f"Invalid tenant name {name!r} in Tenant {n}. "

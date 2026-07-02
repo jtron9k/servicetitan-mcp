@@ -113,6 +113,12 @@ def test_uppercase_name_normalizes(monkeypatch):
     assert config.get_tenant("acme").name == "acme"
 
 
+def test_spaces_in_name_normalize_to_underscores(monkeypatch):
+    _set_slot(monkeypatch, 1, "St Louis")
+    assert set(config.load_tenants()) == {"st_louis"}
+    assert config.get_tenant("st_louis").name == "st_louis"
+
+
 def test_duplicate_slot_names_raise(monkeypatch):
     _set_slot(monkeypatch, 1, "acme")
     _set_slot(monkeypatch, 2, "acme")
