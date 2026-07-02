@@ -20,6 +20,20 @@ from pathlib import Path
 # where the server process was launched.
 _DEFAULT_EXPORT_DIR = Path(__file__).resolve().parents[1] / "report_exports"
 
+# MCPB user-config values can arrive with the host's path placeholders
+# unexpanded (Claude Desktop passes "${DOCUMENTS}/..." through literally in
+# user_config defaults), so expand the documented tokens ourselves.
+def _expand_path(raw: str) -> Path:
+    home = Path.home()
+    for token, base in (
+        ("${HOME}", home),
+        ("${DOCUMENTS}", home / "Documents"),
+        ("${DESKTOP}", home / "Desktop"),
+        ("${DOWNLOADS}", home / "Downloads"),
+    ):
+        raw = raw.replace(token, str(base))
+    return Path(raw).expanduser()
+
 _EXT = {"csv": "csv", "jsonl": "jsonl"}
 
 
@@ -82,12 +96,12 @@ def resolve_output_path(
 
     ext = _EXT[fmt]
     if output_path:
-        final = Path(output_path).expanduser()
+        final = _expand_path(output_path)
     else:
         if output_dir:
-            directory = Path(output_dir).expanduser()
+            directory = _expand_path(output_dir)
         elif os.environ.get("ST_OUTPUTS_DIR"):
-            directory = Path(os.environ["ST_OUTPUTS_DIR"]).expanduser()
+            directory = _expand_path(os.environ["ST_OUTPUTS_DIR"])
         else:
             directory = _DEFAULT_EXPORT_DIR
         final = directory / _auto_filename(report_id, parameters, ext)

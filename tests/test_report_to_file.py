@@ -138,6 +138,41 @@ def test_resolve_output_path_collision_without_overwrite(tmp_path):
         )
 
 
+def test_resolve_output_path_expands_mcpb_placeholders(tmp_path, monkeypatch):
+    """Claude Desktop can pass '${DOCUMENTS}/...' through literally in
+    user_config defaults — the resolver must expand the token instead of
+    creating a directory literally named '${DOCUMENTS}'."""
+    import pathlib
+
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    monkeypatch.setenv("ST_OUTPUTS_DIR", "${DOCUMENTS}/ServiceTitan Reports")
+    final = resolve_output_path(
+        output_path=None,
+        output_dir=None,
+        report_id=7,
+        parameters=None,
+        fmt="csv",
+        overwrite=False,
+    )
+    assert final == tmp_path / "Documents" / "ServiceTitan Reports" / "report_7.csv"
+    assert "${" not in str(final)
+
+
+def test_resolve_output_path_expands_home_token_in_output_dir(tmp_path, monkeypatch):
+    import pathlib
+
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    final = resolve_output_path(
+        output_path=None,
+        output_dir="${HOME}/exports",
+        report_id=8,
+        parameters=None,
+        fmt="csv",
+        overwrite=False,
+    )
+    assert final == tmp_path / "exports" / "report_8.csv"
+
+
 # ── Integration: multi-page pull ──────────────────────────────────────
 
 
