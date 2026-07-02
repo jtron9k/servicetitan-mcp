@@ -1,0 +1,32 @@
+# private / secrets — must never ship in the bundle
+.env
+.env.*
+next_steps.md
+smoke_tenants.py
+test_auth.py
+st_credentials.txt
+report_exports/
+
+# dev-only
+tests/
+docs/
+plans/
+.claude/
+.worktrees/
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.egg-info/
+CLAUDE.md
+Dockerfile
+railway.toml
+pytest.ini
+tool_consolidation_notes.md
+claude_desktop_config_example.json
+
+# build output (so re-packs don't nest bundles)
+dist/
+build/
+*.mcpb
+.DS_Store

@@ -17,6 +17,29 @@ cd servicetitan-mcp
 pip install -e .
 ```
 
+## Install as a Claude Desktop extension (.mcpb)
+
+The easiest way to use this server — no Python, pip, or git required. Claude Desktop
+manages the runtime and dependencies automatically (via its bundled uv).
+
+1. Get the `servicetitan-mcp-<version>.mcpb` file (or build it yourself — see
+   [Building the bundle](#building-the-mcpb-bundle)).
+2. Double-click it, or drag it into **Claude Desktop → Settings → Extensions**.
+3. Fill in **Tenant 1** (all five fields are required):
+   - **Name** — a short lowercase nickname (e.g. `acme`); you'll use it when talking
+     to Claude ("list open jobs for acme").
+   - **Tenant ID / Client ID / Client Secret / App Key** — see
+     [Getting Your Credentials](#getting-your-credentials).
+4. Have more than one ServiceTitan tenant? Fill in Tenants 2–5 the same way.
+   Otherwise leave them blank.
+5. Optionally change the **Report export folder** (where `run_report_to_file`
+   saves CSVs; defaults to `Documents/ServiceTitan Reports`).
+
+Secrets (client secret, app key) are stored in your OS keychain, not on disk.
+The first launch downloads Python dependencies, so it needs a network connection
+and can take a minute; later launches are instant. Settings survive upgrades —
+installing a newer `.mcpb` keeps your credentials.
+
 ## Configuration
 
 Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, or `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
@@ -318,6 +341,33 @@ This server layers the following in front of those limits:
 - **Shared connection pool**: one `httpx.AsyncClient` is reused across all tool calls and all tenants to avoid per-request TCP handshakes. Pooling is per-host; ST is one host, so splitting per tenant would gain nothing.
 
 Retries log to stderr at the `[servicetitan-mcp]` prefix — tail the Claude Desktop logs to observe backoff behavior when investigating slowness.
+
+## Building the .mcpb bundle
+
+For maintainers who want to distribute the server as a Claude Desktop extension:
+
+```bash
+npm install -g @anthropic-ai/mcpb   # once
+
+mcpb validate manifest.json
+mcpb pack . dist/servicetitan-mcp-<version>.mcpb
+```
+
+`.mcpbignore` keeps private and dev-only files (`.env`, `next_steps.md`,
+`report_exports/`, `tests/`, …) out of the archive — the pack output lists every
+included file; it should be exactly `manifest.json`, `pyproject.toml`, `README.md`,
+and the five `servicetitan_mcp/*.py` modules.
+
+Before sharing, always run the secret pre-flight:
+
+```bash
+unzip -l dist/servicetitan-mcp-<version>.mcpb        # eyeball the file list
+unzip -p dist/servicetitan-mcp-<version>.mcpb | grep -aE "cs1\.|cs2\."  # only README placeholders may match
+```
+
+Keep `version` in `manifest.json` and `pyproject.toml` in lockstep. The bundle's
+settings form maps to `ST_TENANT_SLOT1..5_*` env vars (see `config.py`); the
+classic `ST_TENANTS` scheme is unaffected and takes precedence when set.
 
 ## License
 

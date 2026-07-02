@@ -1,0 +1,247 @@
+{
+  "manifest_version": "0.4",
+  "name": "servicetitan-mcp",
+  "display_name": "ServiceTitan",
+  "version": "1.1.0",
+  "description": "Connect Claude to ServiceTitan: jobs, customers, invoices, estimates, dispatch, pricebook, payroll, memberships, and reporting.",
+  "author": {
+    "name": "Justin Schmidt"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jtron9k/servicetitan-mcp"
+  },
+  "keywords": ["servicetitan", "field-service", "crm", "dispatch", "invoicing"],
+  "server": {
+    "type": "uv",
+    "entry_point": "servicetitan_mcp/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "python", "-m", "servicetitan_mcp.server"],
+      "env": {
+        "ST_TENANT_SLOT1_NAME": "${user_config.tenant1_name}",
+        "ST_TENANT_SLOT1_ID": "${user_config.tenant1_id}",
+        "ST_TENANT_SLOT1_CLIENT_ID": "${user_config.tenant1_client_id}",
+        "ST_TENANT_SLOT1_CLIENT_SECRET": "${user_config.tenant1_client_secret}",
+        "ST_TENANT_SLOT1_APP_KEY": "${user_config.tenant1_app_key}",
+        "ST_TENANT_SLOT2_NAME": "${user_config.tenant2_name}",
+        "ST_TENANT_SLOT2_ID": "${user_config.tenant2_id}",
+        "ST_TENANT_SLOT2_CLIENT_ID": "${user_config.tenant2_client_id}",
+        "ST_TENANT_SLOT2_CLIENT_SECRET": "${user_config.tenant2_client_secret}",
+        "ST_TENANT_SLOT2_APP_KEY": "${user_config.tenant2_app_key}",
+        "ST_TENANT_SLOT3_NAME": "${user_config.tenant3_name}",
+        "ST_TENANT_SLOT3_ID": "${user_config.tenant3_id}",
+        "ST_TENANT_SLOT3_CLIENT_ID": "${user_config.tenant3_client_id}",
+        "ST_TENANT_SLOT3_CLIENT_SECRET": "${user_config.tenant3_client_secret}",
+        "ST_TENANT_SLOT3_APP_KEY": "${user_config.tenant3_app_key}",
+        "ST_TENANT_SLOT4_NAME": "${user_config.tenant4_name}",
+        "ST_TENANT_SLOT4_ID": "${user_config.tenant4_id}",
+        "ST_TENANT_SLOT4_CLIENT_ID": "${user_config.tenant4_client_id}",
+        "ST_TENANT_SLOT4_CLIENT_SECRET": "${user_config.tenant4_client_secret}",
+        "ST_TENANT_SLOT4_APP_KEY": "${user_config.tenant4_app_key}",
+        "ST_TENANT_SLOT5_NAME": "${user_config.tenant5_name}",
+        "ST_TENANT_SLOT5_ID": "${user_config.tenant5_id}",
+        "ST_TENANT_SLOT5_CLIENT_ID": "${user_config.tenant5_client_id}",
+        "ST_TENANT_SLOT5_CLIENT_SECRET": "${user_config.tenant5_client_secret}",
+        "ST_TENANT_SLOT5_APP_KEY": "${user_config.tenant5_app_key}",
+        "ST_OUTPUTS_DIR": "${user_config.outputs_dir}"
+      }
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  },
+  "user_config": {
+    "tenant1_name": {
+      "type": "string",
+      "title": "Tenant 1 — Name",
+      "description": "Short lowercase nickname for this ServiceTitan tenant (letters, digits, - or _; e.g. acme). You'll use this name when talking to Claude.",
+      "required": true
+    },
+    "tenant1_id": {
+      "type": "string",
+      "title": "Tenant 1 — Tenant ID",
+      "description": "Numeric tenant ID from the ServiceTitan developer portal (Integrations > API Application Access).",
+      "required": true
+    },
+    "tenant1_client_id": {
+      "type": "string",
+      "title": "Tenant 1 — Client ID",
+      "description": "OAuth client ID (starts with cid.).",
+      "required": true
+    },
+    "tenant1_client_secret": {
+      "type": "string",
+      "title": "Tenant 1 — Client Secret",
+      "description": "OAuth client secret (starts with cs1. or cs2.). Stored in your OS keychain.",
+      "required": true,
+      "sensitive": true
+    },
+    "tenant1_app_key": {
+      "type": "string",
+      "title": "Tenant 1 — App Key",
+      "description": "Application key from the developer portal. Stored in your OS keychain.",
+      "required": true,
+      "sensitive": true
+    },
+    "tenant2_name": {
+      "type": "string",
+      "title": "Tenant 2 — Name (optional)",
+      "description": "Leave blank if you only have one ServiceTitan tenant.",
+      "required": false,
+      "default": ""
+    },
+    "tenant2_id": {
+      "type": "string",
+      "title": "Tenant 2 — Tenant ID",
+      "description": "Required only if Tenant 2 name is set.",
+      "required": false,
+      "default": ""
+    },
+    "tenant2_client_id": {
+      "type": "string",
+      "title": "Tenant 2 — Client ID",
+      "description": "Required only if Tenant 2 name is set.",
+      "required": false,
+      "default": ""
+    },
+    "tenant2_client_secret": {
+      "type": "string",
+      "title": "Tenant 2 — Client Secret",
+      "description": "Required only if Tenant 2 name is set.",
+      "required": false,
+      "default": "",
+      "sensitive": true
+    },
+    "tenant2_app_key": {
+      "type": "string",
+      "title": "Tenant 2 — App Key",
+      "description": "Required only if Tenant 2 name is set.",
+      "required": false,
+      "default": "",
+      "sensitive": true
+    },
+    "tenant3_name": {
+      "type": "string",
+      "title": "Tenant 3 — Name (optional)",
+      "description": "Leave blank if unused.",
+      "required": false,
+      "default": ""
+    },
+    "tenant3_id": {
+      "type": "string",
+      "title": "Tenant 3 — Tenant ID",
+      "description": "Required only if Tenant 3 name is set.",
+      "required": false,
+      "default": ""
+    },
+    "tenant3_client_id": {
+      "type": "string",
+      "title": "Tenant 3 — Client ID",
+      "description": "Required only if Tenant 3 name is set.",
+      "required": false,
+      "default": ""
+    },
+    "tenant3_client_secret": {
+      "type": "string",
+      "title": "Tenant 3 — Client Secret",
+      "description": "Required only if Tenant 3 name is set.",
+      "required": false,
+      "default": "",
+      "sensitive": true
+    },
+    "tenant3_app_key": {
+      "type": "string",
+      "title": "Tenant 3 — App Key",
+      "description": "Required only if Tenant 3 name is set.",
+      "required": false,
+      "default": "",
+      "sensitive": true
+    },
+    "tenant4_name": {
+      "type": "string",
+      "title": "Tenant 4 — Name (optional)",
+      "description": "Leave blank if unused.",
+      "required": false,
+      "default": ""
+    },
+    "tenant4_id": {
+      "type": "string",
+      "title": "Tenant 4 — Tenant ID",
+      "description": "Required only if Tenant 4 name is set.",
+      "required": false,
+      "default": ""
+    },
+    "tenant4_client_id": {
+      "type": "string",
+      "title": "Tenant 4 — Client ID",
+      "description": "Required only if Tenant 4 name is set.",
+      "required": false,
+      "default": ""
+    },
+    "tenant4_client_secret": {
+      "type": "string",
+      "title": "Tenant 4 — Client Secret",
+      "description": "Required only if Tenant 4 name is set.",
+      "required": false,
+      "default": "",
+      "sensitive": true
+    },
+    "tenant4_app_key": {
+      "type": "string",
+      "title": "Tenant 4 — App Key",
+      "description": "Required only if Tenant 4 name is set.",
+      "required": false,
+      "default": "",
+      "sensitive": true
+    },
+    "tenant5_name": {
+      "type": "string",
+      "title": "Tenant 5 — Name (optional)",
+      "description": "Leave blank if unused.",
+      "required": false,
+      "default": ""
+    },
+    "tenant5_id": {
+      "type": "string",
+      "title": "Tenant 5 — Tenant ID",
+      "description": "Required only if Tenant 5 name is set.",
+      "required": false,
+      "default": ""
+    },
+    "tenant5_client_id": {
+      "type": "string",
+      "title": "Tenant 5 — Client ID",
+      "description": "Required only if Tenant 5 name is set.",
+      "required": false,
+      "default": ""
+    },
+    "tenant5_client_secret": {
+      "type": "string",
+      "title": "Tenant 5 — Client Secret",
+      "description": "Required only if Tenant 5 name is set.",
+      "required": false,
+      "default": "",
+      "sensitive": true
+    },
+    "tenant5_app_key": {
+      "type": "string",
+      "title": "Tenant 5 — App Key",
+      "description": "Required only if Tenant 5 name is set.",
+      "required": false,
+      "default": "",
+      "sensitive": true
+    },
+    "outputs_dir": {
+      "type": "directory",
+      "title": "Report export folder",
+      "description": "Where run_report_to_file saves CSV/JSONL report exports.",
+      "required": false,
+      "default": "${DOCUMENTS}/ServiceTitan Reports"
+    }
+  }
+}
