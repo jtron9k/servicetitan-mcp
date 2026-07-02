@@ -1,8 +1,14 @@
 """Multi-tenant ServiceTitan credential registry.
 
-Reads `ST_TENANTS` (comma-separated names) and per-tenant namespaced env vars
-at import time, exposes a lookup API for `server.py`. Names normalize to
-lowercase for lookups and uppercase for env-key matching.
+Two ways to configure tenants, checked in this order:
+
+1. `ST_TENANTS` (comma-separated names) plus per-tenant namespaced env vars
+   `ST_TENANT_<UPPERCASE_NAME>_ID / _CLIENT_ID / _CLIENT_SECRET / _APP_KEY`.
+   Names normalize to lowercase for lookups and uppercase for env-key matching.
+2. Numbered slots `ST_TENANT_SLOT1_NAME / _ID / _CLIENT_ID / _CLIENT_SECRET /
+   _APP_KEY` (up to `_SLOT_COUNT`). Used by the Claude Desktop `.mcpb` bundle,
+   whose settings form can only map fixed field names to env vars. A slot with
+   an empty name is skipped; gaps between slots are fine.
 """
 
 import os
@@ -19,6 +25,9 @@ _PER_TENANT_VARS = (
 )
 
 _LEGACY_VARS = ("ST_TENANT_ID", "ST_APP_KEY", "ST_CLIENT_ID", "ST_CLIENT_SECRET")
+
+# Number of numbered tenant slots exposed by the .mcpb bundle settings form.
+_SLOT_COUNT = 5
 
 
 @dataclass(frozen=True)
@@ -66,6 +75,52 @@ def _parse_roster(raw: str) -> list[str]:
     return deduped
 
 
+def _env(key: str) -> str | None:
+    """Env value, treating empty/whitespace and unsubstituted MCPB placeholders
+    as absent (Claude Desktop substitutes '' for blank optional fields, and some
+    hosts leave the literal '${user_config.x}' when a field has no value)."""
+    val = os.environ.get(key, "").strip()
+    if not val or val.startswith("${user_config."):
+        return None
+    return val
+
+
+def _load_slots() -> dict[str, TenantCredentials] | None:
+    """Load tenants from ST_TENANT_SLOT1..N_* vars (Claude Desktop .mcpb path).
+
+    Returns None if no slot has a name. A slot with an empty name is skipped,
+    so gaps between filled slots are fine. A named slot missing any credential
+    fails fast.
+    """
+    tenants: dict[str, TenantCredentials] = {}
+    for n in range(1, _SLOT_COUNT + 1):
+        prefix = f"ST_TENANT_SLOT{n}_"
+        name = _env(prefix + "NAME")
+        if name is None:
+            continue
+        name = name.lower()
+        if not _NAME_RE.match(name):
+            raise RuntimeError(
+                f"Invalid tenant name {name!r} in Tenant {n}. "
+                "Names must be lowercase, start with a letter, "
+                "and use only [a-z0-9_-]."
+            )
+        if name in tenants:
+            raise RuntimeError(f"Duplicate tenant name {name!r} (Tenant {n}).")
+        values: dict[str, str] = {}
+        for field, suffix in _PER_TENANT_VARS:
+            val = _env(prefix + suffix)
+            if val is None:
+                raise RuntimeError(
+                    f"Tenant {n} ({name!r}) is missing {prefix + suffix}. "
+                    "Fill in all five fields for this tenant in the extension "
+                    "settings, or clear its name to disable the slot."
+                )
+            values[field] = val
+        tenants[name] = TenantCredentials(name=name, **values)
+    return tenants or None
+
+
 def _load_one(name: str) -> TenantCredentials:
     upper = name.upper()
     values: dict[str, str] = {}
@@ -81,7 +136,9 @@ def _load_one(name: str) -> TenantCredentials:
 def load_tenants() -> dict[str, TenantCredentials]:
     """Load all configured tenants. Cached after first call.
 
-    Raises RuntimeError on missing/invalid config. Hard-errors if the legacy
+    `ST_TENANTS` (namespaced vars) takes precedence; otherwise falls back to
+    the numbered `ST_TENANT_SLOT*` vars set by the .mcpb bundle. Raises
+    RuntimeError on missing/invalid config. Hard-errors if the legacy
     single-tenant env vars are set but `ST_TENANTS` is unset, to steer users
     through the migration.
     """
@@ -91,6 +148,10 @@ def load_tenants() -> dict[str, TenantCredentials]:
 
     roster = os.environ.get("ST_TENANTS", "").strip()
     if not roster:
+        slot_tenants = _load_slots()
+        if slot_tenants is not None:
+            _cache = slot_tenants
+            return slot_tenants
         legacy_present = [v for v in _LEGACY_VARS if os.environ.get(v)]
         if legacy_present:
             raise RuntimeError(
@@ -101,9 +162,10 @@ def load_tenants() -> dict[str, TenantCredentials]:
                 "See README for the full migration."
             )
         raise RuntimeError(
-            "ST_TENANTS is not set. Define it as a comma-separated list of tenant "
-            "names (e.g. ST_TENANTS=acme,other) and set "
-            "ST_TENANT_<NAME>_ID / _CLIENT_ID / _CLIENT_SECRET / _APP_KEY for each."
+            "No tenants configured. Either set ST_TENANTS=<comma-separated names> "
+            "plus ST_TENANT_<NAME>_ID / _CLIENT_ID / _CLIENT_SECRET / _APP_KEY per "
+            "tenant, or (Claude Desktop extension) fill in Tenant 1 in the "
+            "extension settings (ST_TENANT_SLOT1_*)."
         )
 
     names = _parse_roster(roster)
